@@ -13,24 +13,27 @@ export class Renderer {
         const maxWidth = container.clientWidth - 40;
         const maxHeight = container.clientHeight - 40;
         
-        // Вычисляем размеры с учетом гексагональной сетки
-        const hexWidth = this.hexGrid.hexWidth;
-        const hexHeight = this.hexGrid.hexHeight * 0.75;
+        // Вычисляем оптимальный размер гексагона для поля 15x45
+        // Для pointy-top: ширина = sqrt(3) * size, высота = 2 * size
+        // Вертикальное расстояние между центрами = 1.5 * size
+        // Горизонтальное расстояние = sqrt(3) * size
         
-        const requiredWidth = this.hexGrid.width * hexWidth;
-        const requiredHeight = this.hexGrid.height * hexHeight;
+        // Вычисляем размер, чтобы поле поместилось по ширине и высоте
+        const sizeByWidth = maxWidth / (this.hexGrid.width * Math.sqrt(3));
+        const sizeByHeight = maxHeight / (this.hexGrid.height * 1.5);
         
-        const scaleX = maxWidth / requiredWidth;
-        const scaleY = maxHeight / requiredHeight;
-        const scale = Math.min(scaleX, scaleY, 1);
+        const optimalHexSize = Math.min(sizeByWidth, sizeByHeight) * 0.95;
+        this.hexGrid.hexSize = Math.max(optimalHexSize, 10); // Минимум 10 пикселей
         
-        this.canvas.width = requiredWidth * scale;
-        this.canvas.height = requiredHeight * scale;
-        this.scale = scale;
-        
-        this.hexGrid.hexSize *= scale;
         this.hexGrid.hexHeight = this.hexGrid.hexSize * 2;
         this.hexGrid.hexWidth = Math.sqrt(3) * this.hexGrid.hexSize;
+        
+        // Размеры канваса для всей сетки
+        const canvasWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        const canvasHeight = this.hexGrid.height * this.hexGrid.hexSize * 1.5 + this.hexGrid.hexSize;
+        
+        this.canvas.width = Math.min(canvasWidth, maxWidth);
+        this.canvas.height = Math.min(canvasHeight, maxHeight);
     }
 
     clear() {
@@ -39,13 +42,15 @@ export class Renderer {
 
     drawGrid() {
         this.ctx.save();
-        this.ctx.translate(this.canvas.width / 2, 20);
+        
+        // Центрируем сетку на канвасе
+        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
         
         for (let x = 0; x < this.hexGrid.width; x++) {
             for (let y = 0; y < this.hexGrid.height; y++) {
                 const hex = this.hexGrid.arrayToHex(x, y);
-                const pixelPos = this.hexGrid.hexToPixel(hex);
-                
                 this.hexGrid.drawHex(
                     this.ctx,
                     hex,
@@ -60,7 +65,10 @@ export class Renderer {
 
     drawTowers(towers) {
         this.ctx.save();
-        this.ctx.translate(this.canvas.width / 2, 20);
+        
+        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
         
         towers.forEach(tower => {
             const hex = this.hexGrid.arrayToHex(tower.x, tower.y);
@@ -78,9 +86,10 @@ export class Renderer {
             
             // Уровень башни
             this.ctx.fillStyle = 'white';
-            this.ctx.font = `${this.hexGrid.hexSize * 0.3}px Arial`;
+            this.ctx.font = `${Math.max(this.hexGrid.hexSize * 0.3, 8)}px Arial`;
             this.ctx.textAlign = 'center';
-            this.ctx.fillText(tower.level, pixelPos.x, pixelPos.y + size * 0.1);
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(tower.level, pixelPos.x, pixelPos.y);
         });
         
         this.ctx.restore();
@@ -88,7 +97,10 @@ export class Renderer {
 
     drawSoldiers(soldiers) {
         this.ctx.save();
-        this.ctx.translate(this.canvas.width / 2, 20);
+        
+        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
         
         soldiers.forEach(soldier => {
             // Конвертируем координаты массива в гексагональные координаты для отображения
@@ -123,7 +135,10 @@ export class Renderer {
         if (!cell) return;
         
         this.ctx.save();
-        this.ctx.translate(this.canvas.width / 2, 20);
+        
+        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
         
         const hex = this.hexGrid.arrayToHex(cell.x, cell.y);
         this.hexGrid.drawHex(this.ctx, hex, null, color);
@@ -134,16 +149,19 @@ export class Renderer {
 
     drawBases() {
         this.ctx.save();
-        this.ctx.translate(this.canvas.width / 2, 20);
         
-        // База игрока 1 (слева)
-        for (let y = 0; y < this.hexGrid.width; y++) {
+        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        // База игрока 1 (слева) - первый столбец по всей высоте
+        for (let y = 0; y < this.hexGrid.height; y++) {
             const hex = this.hexGrid.arrayToHex(0, y);
             this.hexGrid.drawHex(this.ctx, hex, 'rgba(74, 144, 226, 0.5)', '#4a90e2');
         }
         
-        // База игрока 2 (справа)
-        for (let y = 0; y < this.hexGrid.width; y++) {
+        // База игрока 2 (справа) - последний столбец по всей высоте
+        for (let y = 0; y < this.hexGrid.height; y++) {
             const hex = this.hexGrid.arrayToHex(this.hexGrid.width - 1, y);
             this.hexGrid.drawHex(this.ctx, hex, 'rgba(226, 74, 74, 0.5)', '#e24a4a');
         }

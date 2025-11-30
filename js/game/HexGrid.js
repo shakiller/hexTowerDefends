@@ -2,20 +2,32 @@ export class HexGrid {
     constructor(width = 15, height = 45) {
         this.width = width;
         this.height = height;
-        this.hexSize = 20;
+        this.hexSize = 15; // Базовый размер, будет масштабироваться
         this.hexHeight = this.hexSize * 2;
         this.hexWidth = Math.sqrt(3) * this.hexSize;
     }
 
     pixelToHex(x, y) {
-        const q = (2/3 * x) / this.hexSize;
-        const r = (-1/3 * x + Math.sqrt(3)/3 * y) / this.hexSize;
-        return this.hexRound({q, r});
+        // Обратное преобразование для pointy-top с offset координатами
+        // Сначала находим приблизительную колонку и строку
+        const col = Math.round(x / (this.hexSize * Math.sqrt(3)));
+        const row = Math.round(y / (this.hexSize * 1.5));
+        
+        // Конвертируем обратно в кубические координаты
+        const q = col;
+        const r = row - Math.floor(col / 2);
+        return this.hexRound({q, r, s: -q - r});
     }
 
     hexToPixel(hex) {
-        const x = this.hexSize * (Math.sqrt(3) * hex.q + Math.sqrt(3)/2 * hex.r);
-        const y = this.hexSize * (3/2 * hex.r);
+        // Конвертируем кубические координаты в offset координаты (odd-r)
+        const col = hex.q;
+        const row = hex.r + Math.floor(hex.q / 2);
+        
+        // Для pointy-top гексагонов с odd-r offset координатами
+        // Нечетные столбцы (col % 2 == 1) сдвигаются вниз на полвысоты
+        const x = this.hexSize * Math.sqrt(3) * (col + 0.5);
+        const y = this.hexSize * (3/2 * row + (col % 2) * 0.5);
         return { x, y };
     }
 
@@ -59,8 +71,9 @@ export class HexGrid {
     getHexCorners(hex) {
         const center = this.hexToPixel(hex);
         const corners = [];
+        // Для pointy-top гексагонов начинаем с верхней вершины (-PI/2)
         for (let i = 0; i < 6; i++) {
-            const angle = Math.PI / 3 * i;
+            const angle = Math.PI / 3 * i - Math.PI / 2;
             corners.push({
                 x: center.x + this.hexSize * Math.cos(angle),
                 y: center.y + this.hexSize * Math.sin(angle)

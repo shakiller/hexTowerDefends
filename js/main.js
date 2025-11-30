@@ -23,6 +23,14 @@ class Game {
         
         this.setupEventListeners();
         this.setupBLoCSubscriptions();
+        
+        // Обработка изменения размера окна
+        window.addEventListener('resize', () => {
+            if (this.gameBloc.getState().gameState === 'playing') {
+                this.renderer.setupCanvas();
+                this.render();
+            }
+        });
     }
 
     setupEventListeners() {
@@ -249,8 +257,10 @@ class Game {
         if ((gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') && gameState.currentPlayer === 2) return; // Бот играет автоматически
         
         const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left - this.canvas.width / 2;
-        const y = e.clientY - rect.top - 20;
+        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const offsetY = this.hexGrid.hexSize;
+        const x = e.clientX - rect.left - offsetX;
+        const y = e.clientY - rect.top - offsetY;
         
         const hex = this.hexGrid.pixelToHex(x, y);
         if (!this.hexGrid.isValidHex(hex)) return;
