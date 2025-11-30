@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hex Tower Defense</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="menu-screen" class="screen active">
+            <h1>Hex Tower Defense</h1>
+            <div class="menu-buttons">
+                <button id="btn-pvp" class="menu-btn">Два игрока</button>
+                <button id="btn-pve" class="menu-btn">Против бота</button>
+                <button id="btn-campaign" class="menu-btn">По уровням</button>
+            </div>
+        </div>
+
+        <div id="game-screen" class="screen">
+            <div id="game-header">
+                <div id="player1-info" class="player-info">
+                    <h3>Игрок 1</h3>
+                    <div class="resource">Золото: <span id="p1-gold">500</span></div>
+                    <div class="resource">База: <span id="p1-health">100</span> HP</div>
+                </div>
+                <div id="game-controls">
+                    <button id="btn-pause" class="control-btn">Пауза</button>
+                    <button id="btn-menu" class="control-btn">Меню</button>
+                </div>
+                <div id="player2-info" class="player-info">
+                    <h3>Игрок 2</h3>
+                    <div class="resource">Золото: <span id="p2-gold">500</span></div>
+                    <div class="resource">База: <span id="p2-health">100</span> HP</div>
+                </div>
+            </div>
+
+            <div id="game-board-container">
+                <canvas id="game-canvas"></canvas>
+            </div>
+
+            <div id="game-panel">
+                <div id="tower-panel" class="panel-section">
+                    <h4>Башни</h4>
+                    <div class="tower-options">
+                        <button class="tower-btn" data-type="basic" data-cost="100">
+                            Базовая башня (100)
+                        </button>
+                        <button class="tower-btn" data-type="strong" data-cost="200">
+                            Сильная башня (200)
+                        </button>
+                    </div>
+                    <div id="selected-tower-info" class="info-panel"></div>
+                </div>
+
+                <div id="soldier-panel" class="panel-section">
+                    <h4>Солдаты</h4>
+                    <div class="soldier-options">
+                        <button class="soldier-btn" data-type="basic" data-cost="50">
+                            Базовый солдат (50)
+                        </button>
+                        <button class="soldier-btn" data-type="strong" data-cost="100">
+                            Сильный солдат (100)
+                        </button>
+                    </div>
+                    <div id="selected-soldier-info" class="info-panel"></div>
+                </div>
+
+                <div id="upgrade-panel" class="panel-section">
+                    <h4>Улучшения</h4>
+                    <button id="btn-upgrade-tower" class="upgrade-btn" disabled>Улучшить башню</button>
+                    <button id="btn-upgrade-soldier" class="upgrade-btn" disabled>Улучшить солдата</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="victory-screen" class="screen">
+            <h1 id="victory-text"></h1>
+            <button id="btn-restart" class="menu-btn">Начать заново</button>
+            <button id="btn-back-menu" class="menu-btn">В меню</button>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
