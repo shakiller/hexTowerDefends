@@ -62,8 +62,9 @@ class Game {
                     const dy = e.clientY - startY;
                     dragDistance = Math.sqrt(dx * dx + dy * dy);
                     
-                    // Если перемещение больше 3 пикселей, начинаем перетаскивание
-                    if (dragDistance > 3) {
+                    // Если перемещение больше 8 пикселей, начинаем перетаскивание
+                    // Больший порог чтобы не блокировать обычные клики
+                    if (dragDistance > 8) {
                         isDragging = true;
                         wasDrag = true;
                         container.style.cursor = 'grabbing';
@@ -80,17 +81,25 @@ class Game {
             }
         });
 
-        container.addEventListener('mouseup', () => {
-            if (wasDrag) {
-                // Предотвращаем клик после перетаскивания
-                setTimeout(() => {
-                    wasDrag = false;
-                }, 50);
+        container.addEventListener('mouseup', (e) => {
+            // Если был drag, не обрабатываем клик
+            if (wasDrag && dragDistance > 5) {
+                e.preventDefault();
+                e.stopPropagation();
             }
+            
+            // Сбрасываем флаги после небольшой задержки
+            setTimeout(() => {
+                if (wasDrag) {
+                    wasDrag = false;
+                }
+            }, 100);
+            
             isDragging = false;
             container.style.cursor = 'grab';
             startX = undefined;
             startY = undefined;
+            dragDistance = 0;
         });
 
         container.addEventListener('mouseleave', () => {
@@ -99,12 +108,31 @@ class Game {
             wasDrag = false;
         });
 
-        // Отменяем клик на канвасе если было перетаскивание
+        // Отслеживаем, было ли перетаскивание для предотвращения клика
+        let preventClick = false;
+        
+        container.addEventListener('mousedown', () => {
+            preventClick = false;
+        });
+        
+        container.addEventListener('mousemove', () => {
+            if (dragDistance > 8) {
+                preventClick = true;
+            }
+        });
+        
+        // Отменяем клик на канвасе только если было реальное перетаскивание
         this.canvas.addEventListener('click', (e) => {
-            if (wasDrag) {
+            // Блокируем только если было перемещение больше 8 пикселей
+            if (preventClick && dragDistance > 8) {
                 e.preventDefault();
                 e.stopPropagation();
+                preventClick = false;
+                dragDistance = 0;
+                return false;
             }
+            preventClick = false;
+            dragDistance = 0;
         }, true);
     }
 
@@ -336,8 +364,13 @@ class Game {
 
     handleCanvasClick(e) {
         const gameState = this.gameBloc.getState();
-        if (gameState.gameState !== 'playing') return;
+        if (gameState.gameState !== 'playing') {
+            console.log('Игра не запущена');
+            return;
+        }
         if ((gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') && gameState.currentPlayer === 2) return;
+        
+        console.log('Обработка клика на канвасе');
         
         const rect = this.canvas.getBoundingClientRect();
         const container = document.getElementById('game-board-container');
@@ -350,22 +383,32 @@ class Game {
         const x = (e.clientX - rect.left) + container.scrollLeft - offsetX;
         const y = (e.clientY - rect.top) + container.scrollTop - offsetY;
         
+        console.log('Координаты:', { x, y, scrollLeft: container.scrollLeft, scrollTop: container.scrollTop });
+        
         const hex = this.hexGrid.pixelToHex(x, y);
-        if (!this.hexGrid.isValidHex(hex)) return;
+        if (!this.hexGrid.isValidHex(hex)) {
+            console.log('Гексагон вне границ');
+            return;
+        }
         
         const arrHex = this.hexGrid.hexToArray(hex);
+        console.log('Выбранная ячейка:', arrHex);
+        
         const playerState = this.playerBloc.getState();
         const currentPlayer = gameState.currentPlayer;
         
         // Выбор башни или солдата для улучшения
         if (!playerState.selectedTowerType && !playerState.selectedSoldierType) {
+            console.log('Выбор ячейки');
             this.playerBloc.selectCell(arrHex);
             return;
         }
         
         // Размещение башни
         if (playerState.selectedTowerType) {
+            console.log('Попытка разместить башню:', playerState.selectedTowerType, 'на', arrHex);
             const success = this.towerBloc.createTower(arrHex, currentPlayer, playerState.selectedTowerType);
+            console.log('Результат:', success);
             if (success) {
                 this.playerBloc.clearSelection();
                 // В режиме кампании не переключаем игрока
@@ -373,7 +416,7 @@ class Game {
                     this.gameBloc.switchPlayer();
                 }
             } else {
-                console.log('Не удалось разместить башню. Проверьте, что клетка свободна и достаточно золота.');
+                console.log('Не удалось разместить башню');
             }
         }
         

@@ -42,10 +42,11 @@ export class Renderer {
         // По ширине делаем больше, чтобы было место для прокрутки
         const sizeByHeight = maxHeight / (this.hexGrid.height * hexVerticalSpacing);
         
-        // Минимальный размер для хорошей видимости
-        // Делаем больше, чтобы поле было шире - не ограничиваем размером контейнера
-        // Используем фиксированный размер для лучшей видимости
-        const optimalHexSize = Math.max(sizeByHeight * 0.95, 18); // Минимум 18 пикселей для широкого поля
+        // Минимальный размер для хорошей видимости - делаем гексагоны больше
+        // Используем более крупный размер для широкого поля
+        // Увеличиваем размер для более широкого поля
+        // Увеличиваем размер для более широкого поля - не ограничиваем минимальным
+        const optimalHexSize = Math.max(sizeByHeight * 0.98, 25); // Минимум 25 пикселей для широкого поля
         this.hexGrid.hexSize = optimalHexSize;
         
         this.hexGrid.hexHeight = this.hexGrid.hexSize * 2;
@@ -58,15 +59,22 @@ export class Renderer {
         
         // Устанавливаем реальные размеры канваса - делаем его достаточно большим
         // Убеждаемся что поле 15x45 помещается полностью без обрезки
-        this.canvas.width = Math.max(canvasWidth, 1200); // Минимум 1200 пикселей ширины для поля 15 столбцов
-        this.canvas.height = Math.max(canvasHeight, 1000); // Минимум 1000 пикселей высоты для поля 45 рядов
+        // Используем рассчитанную ширину, но не меньше минимума
+        // Убеждаемся что канвас достаточно широкий - не ограничиваем
+        this.canvas.width = Math.max(canvasWidth, 1600); // Минимум 1600 пикселей ширины для поля 15 столбцов
+        this.canvas.height = Math.max(canvasHeight, 1300); // Минимум 1300 пикселей высоты для поля 45 рядов
         
         console.log('Canvas setup:', {
             hexSize: this.hexGrid.hexSize,
+            hexWidth: this.hexGrid.hexWidth,
             canvasWidth: this.canvas.width,
             canvasHeight: this.canvas.height,
+            calculatedWidth: canvasWidth,
+            calculatedHeight: canvasHeight,
             maxWidth,
-            maxHeight
+            maxHeight,
+            containerWidth: container.clientWidth,
+            containerHeight: container.clientHeight
         });
     }
 
