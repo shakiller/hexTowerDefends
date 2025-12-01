@@ -105,14 +105,24 @@ export class Renderer {
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
+        // Сетка рисуется до height - 2 (предпоследняя строка), чтобы база была на НОВОЙ строке height - 1
         for (let x = 0; x < this.hexGrid.width; x++) {
-            for (let y = 0; y < this.hexGrid.height; y++) {
+            for (let y = 0; y < this.hexGrid.height - 1; y++) { // Сетка до y = 50 (height - 2)
                 const hex = this.hexGrid.arrayToHex(x, y);
+                
+                // Подсветка чётных ячеек (x=0,2,4,6,8,10,12,14) на предпоследнем ряду (y=50)
+                let fillColor = '#1a3a5a';
+                let strokeColor = '#2a4a6a';
+                if (y === this.hexGrid.height - 2 && x % 2 === 0) {
+                    fillColor = 'rgba(74, 144, 226, 0.3)'; // Светлая синяя заливка
+                    strokeColor = '#4a90e2'; // Синяя граница
+                }
+                
                 this.hexGrid.drawHex(
                     this.ctx,
                     hex,
-                    '#1a3a5a',
-                    '#2a4a6a'
+                    fillColor,
+                    strokeColor
                 );
             }
         }
@@ -172,9 +182,29 @@ export class Renderer {
         this.ctx.translate(offsetX, offsetY);
         
         soldiers.forEach(soldier => {
-            // Конвертируем координаты массива в гексагональные координаты для отображения
-            const hex = this.hexGrid.arrayToHex(Math.round(soldier.x), Math.round(soldier.y));
-            const pixelPos = this.hexGrid.hexToPixel(hex);
+            // Плавное движение - используем точные координаты, а не округлённые
+            // Преобразуем array координаты в hex для вычисления пиксельных координат
+            const hex = this.hexGrid.arrayToHex(soldier.x, soldier.y);
+            
+            // Получаем базовые пиксельные координаты для целочисленной части
+            const baseHex = this.hexGrid.arrayToHex(Math.floor(soldier.x), Math.floor(soldier.y));
+            const basePixelPos = this.hexGrid.hexToPixel(baseHex);
+            
+            // Получаем пиксельные координаты для следующей ячейки (для интерполяции)
+            const nextX = Math.ceil(soldier.x);
+            const nextY = Math.ceil(soldier.y);
+            const nextHex = this.hexGrid.arrayToHex(nextX, nextY);
+            const nextPixelPos = this.hexGrid.hexToPixel(nextHex);
+            
+            // Вычисляем дробную часть для плавной интерполяции
+            const fracX = soldier.x - Math.floor(soldier.x);
+            const fracY = soldier.y - Math.floor(soldier.y);
+            
+            // Плавная интерполяция между ячейками
+            const pixelPos = {
+                x: basePixelPos.x + (nextPixelPos.x - basePixelPos.x) * fracX,
+                y: basePixelPos.y + (nextPixelPos.y - basePixelPos.y) * fracY
+            };
             
             // Рисуем прямоугольник-солдата
             const size = this.hexGrid.hexSize * 0.4;
@@ -235,19 +265,61 @@ export class Renderer {
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
-        // База игрока 1 (слева) - первый столбец по всей высоте
-        for (let y = 0; y < this.hexGrid.height; y++) {
-            const hex = this.hexGrid.arrayToHex(0, y);
-            // Более яркая заливка для лучшей видимости
-            this.hexGrid.drawHex(this.ctx, hex, 'rgba(74, 144, 226, 0.7)', '#4a90e2');
+        // База игрока 1 (внизу) - НОВАЯ строка (height - 1), только чётные ячейки
+        // Если считать с 1: x=1,2,3... → чётные это x=2,4,6,8,10,12,14 (индексы 1,3,5... - нечётные индексы!)
+        const player1BaseY = this.hexGrid.height - 1; // Новая строка (y = 51 при height = 52)
+        for (let x = 0; x < this.hexGrid.width; x++) {
+            // Только чётные столбцы (считая с 1): x=2,4,6,8,10,12,14 (индексы 1,3,5,7,9,11,13)
+            if (x % 2 === 1) { // Нечётный индекс = чётный столбец (считая с 1)
+                const hex = this.hexGrid.arrayToHex(x, player1BaseY);
+                // Более яркий цвет для лучшей видимости - это новый ряд ниже сетки
+                this.hexGrid.drawHex(this.ctx, hex, 'rgba(74, 144, 226, 0.9)', '#4a90e2');
+            }
         }
         
-        // База игрока 2 (справа) - последний столбец по всей высоте
-        for (let y = 0; y < this.hexGrid.height; y++) {
-            const hex = this.hexGrid.arrayToHex(this.hexGrid.width - 1, y);
+        // База игрока 2 (вверху) - верхняя строка по всей ширине
+        const player2BaseY = 0; // Верхняя строка
+        for (let x = 0; x < this.hexGrid.width; x++) {
+            const hex = this.hexGrid.arrayToHex(x, player2BaseY);
             // Более яркая заливка для лучшей видимости
             this.hexGrid.drawHex(this.ctx, hex, 'rgba(226, 74, 74, 0.7)', '#e24a4a');
         }
+        
+        this.ctx.restore();
+    }
+
+    drawGates() {
+        this.ctx.save();
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        // Ворота игрока 1 (внизу по центру) - ближайшая чётная позиция к центру (считая с 1)
+        // Ворота игрока 1 (внизу по центру) - центр (индекс 7 → столбец 8, чётный с 1)
+        const centerX = Math.floor(this.hexGrid.width / 2); // Центр индекс 7 → столбец 8 (чётный с 1)
+        const gateX = centerX; // Индекс 7 → столбец 8 (чётный с 1) - это и есть центр
+        const player1GateY = this.hexGrid.height - 1; // Новая строка базы
+        const hex1 = this.hexGrid.arrayToHex(gateX, player1GateY);
+        
+        // Рисуем арку ворот игрока 1 (желтая рамка)
+        this.ctx.strokeStyle = '#ffff00';
+        this.ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+        this.ctx.lineWidth = 4;
+        this.hexGrid.drawHex(this.ctx, hex1, 'rgba(255, 255, 0, 0.2)', '#ffff00');
+        
+        // Ворота игрока 2 (вверху по центру) - x=центр, y=верх
+        const player2GateY = 0; // Верхняя строка
+        const hex2 = this.hexGrid.arrayToHex(centerX, player2GateY);
+        
+        // Рисуем арку ворот игрока 2 (желтая рамка)
+        this.ctx.strokeStyle = '#ffff00';
+        this.ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+        this.ctx.lineWidth = 4;
+        this.hexGrid.drawHex(this.ctx, hex2, 'rgba(255, 255, 0, 0.2)', '#ffff00');
         
         this.ctx.restore();
     }
@@ -324,18 +396,37 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    render(gameState, towerState, soldierState, playerState, mousePosition = null, mouseHistory = [], obstacleState = null) {
+    drawHoverCell(hex) {
+        if (!hex || !this.hexGrid.isValidHex(hex)) return;
+        
+        this.ctx.save();
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        // Подсветка ячейки под курсором
+        this.hexGrid.drawHex(this.ctx, hex, 'rgba(255, 255, 255, 0.2)', 'rgba(255, 255, 255, 0.4)');
+        
+        this.ctx.restore();
+    }
+
+    render(gameState, towerState, soldierState, playerState, mousePosition = null, obstacleState = null) {
         this.clear();
         this.drawGrid();
         this.drawBases();
+        this.drawGates();
         
         // Рисуем препятствия перед башнями и солдатами
         if (obstacleState && obstacleState.obstacles) {
             this.drawObstacles(obstacleState.obstacles);
         }
         
-        // Подсветка доступных ячеек для размещения
-        if (playerState.selectedTowerType || playerState.selectedSoldierType) {
+        // Подсветка доступных ячеек для размещения (только для башен, солдаты создаются сразу)
+        if (playerState.selectedTowerType) {
             this.drawPlacementPreview(gameState, playerState, towerState, obstacleState);
         }
         
@@ -346,9 +437,9 @@ export class Renderer {
             this.drawSelection(playerState.selectedCell, 'yellow');
         }
         
-        // Визуализация позиции мыши для отладки
-        if (mousePosition || mouseHistory.length > 0) {
-            this.drawMouseDebug(mousePosition, mouseHistory);
+        // Подсветка ячейки под курсором мыши
+        if (mousePosition && mousePosition.hex) {
+            this.drawHoverCell(mousePosition.hex);
         }
     }
 
@@ -373,12 +464,14 @@ export class Renderer {
             const towerCost = towerCosts[playerState.selectedTowerType] || 100;
             
             for (let x = 0; x < this.hexGrid.width; x++) {
-                for (let y = 0; y < this.hexGrid.height; y++) {
+                // Не подсвечиваем предпоследний ряд (y = height - 2) в режиме установки башен
+                // Сетка до height - 2, затем пропускаем предпоследний ряд, затем последний ряд (база)
+                for (let y = 0; y < this.hexGrid.height - 2; y++) {
                     const hex = this.hexGrid.arrayToHex(x, y);
                     const existingTower = towerState.towers.find(t => t.x === x && t.y === y);
                     
-                    // Не ставим башни на базах (первый и последний столбец)
-                    if (x === 0 || x === this.hexGrid.width - 1) continue;
+                    // Не ставим башни на базе игрока 2 (верхняя строка y === 0)
+                    if (y === 0) continue;
                     
                     // Проверка препятствий
                     const obstacle = obstacleState && obstacleState.obstacles ? 
@@ -396,20 +489,7 @@ export class Renderer {
             }
         }
         
-        // Подсветка для солдат - только база
-        if (playerState.selectedSoldierType) {
-            const soldierCosts = { basic: 50, strong: 100 };
-            const soldierCost = soldierCosts[playerState.selectedSoldierType] || 50;
-            
-            const baseX = currentPlayer === 1 ? 0 : this.hexGrid.width - 1;
-            for (let y = 0; y < this.hexGrid.height; y++) {
-                const hex = this.hexGrid.arrayToHex(baseX, y);
-                if (player.gold >= soldierCost) {
-                    // Голубая подсветка для базы
-                    this.hexGrid.drawHex(this.ctx, hex, 'rgba(0, 255, 255, 0.3)', 'rgba(0, 255, 255, 0.7)');
-                }
-            }
-        }
+        // Солдаты теперь создаются сразу при нажатии на кнопку, подсветка не нужна
         
         this.ctx.restore();
     }

@@ -1,6 +1,7 @@
 export class TowerBloc {
-    constructor(gameBloc) {
+    constructor(gameBloc, hexGrid) {
         this.gameBloc = gameBloc;
+        this.hexGrid = hexGrid;
         this.state = {
             towers: [] // {id, playerId, x, y, type, level, damage, range, cost}
         };
@@ -34,15 +35,18 @@ export class TowerBloc {
             return false;
         }
 
-        // Не ставим башни на базах (первый и последний столбец)
-        // Ширина поля - 15, значит индексы 0-14
-        if (arrPos.x === 0 || arrPos.x === 14) {
-            console.log('Нельзя ставить башни на базе. x =', arrPos.x);
+        // Не ставим башни на базах
+        // База игрока 2 (вверху) - вся верхняя строка (y === 0)
+        // База игрока 1 (внизу) - последняя строка (y === height - 1, только чётные ячейки)
+        const isOnPlayer2Base = arrPos.y === 0;
+        const isOnPlayer1Base = arrPos.y === this.hexGrid.height - 1 && arrPos.x % 2 === 1; // Последняя строка, чётные столбцы (с 1) → индексы нечётные
+        if (isOnPlayer1Base || isOnPlayer2Base) {
+            console.log('Нельзя ставить башни на базе. x =', arrPos.x, 'y =', arrPos.y);
             return false;
         }
         
         // Проверка границ поля
-        if (arrPos.x < 1 || arrPos.x >= 14 || arrPos.y < 0 || arrPos.y >= 45) {
+        if (arrPos.x < 0 || arrPos.x >= this.hexGrid.width || arrPos.y < 0 || arrPos.y >= this.hexGrid.height) {
             console.log('Башня вне границ поля. x =', arrPos.x, 'y =', arrPos.y);
             return false;
         }

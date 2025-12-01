@@ -84,6 +84,16 @@
                     <button id="btn-upgrade-soldier" class="upgrade-btn" disabled>Улучшить солдата</button>
                     <button id="btn-cancel-selection" class="upgrade-btn" style="background: #666; margin-top: 5px; display: none;">Отменить выбор</button>
                 </div>
+
+                <div id="settings-panel" class="panel-section">
+                    <h4>Настройки</h4>
+                    <div style="margin-top: 10px;">
+                        <label for="soldier-speed-slider" style="color: #ccc; font-size: 0.9em; display: block; margin-bottom: 5px;">
+                            Скорость солдат: <span id="soldier-speed-value">0.05</span>
+                        </label>
+                        <input type="range" id="soldier-speed-slider" min="0.01" max="0.1" step="0.01" value="0.05" style="width: 100%;">
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -171,6 +181,6 @@
             console.log('Глобальный обработчик кликов установлен');
         }, 100);
     </script>
-    <script type="module" src="js/main.js?v=37"></script>
+    <script type="module" src="js/main.js?v=67"></script>
 </body>
 </html>

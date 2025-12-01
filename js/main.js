@@ -15,11 +15,11 @@ console.log('=== ИМПОРТЫ ЗАГРУЖЕНЫ ===');
 class Game {
     constructor() {
         this.gameBloc = new GameBloc();
+        this.hexGrid = new HexGrid(15, 52); // 52 строки (0-51): сетка до 50, база на новой строке 51 с только чётными ячейками
         this.playerBloc = new PlayerBloc(this.gameBloc);
-        this.towerBloc = new TowerBloc(this.gameBloc);
-        this.soldierBloc = new SoldierBloc(this.gameBloc);
+        this.towerBloc = new TowerBloc(this.gameBloc, this.hexGrid);
+        this.soldierBloc = new SoldierBloc(this.gameBloc, this.hexGrid);
         this.obstacleBloc = new ObstacleBloc();
-        this.hexGrid = new HexGrid(15, 45);
         
         this.canvas = document.getElementById('game-canvas');
         this.renderer = new Renderer(this.canvas, this.hexGrid);
@@ -253,12 +253,27 @@ class Game {
                 const type = e.target.dataset.type || e.target.closest('.soldier-btn')?.dataset.type;
                 if (!type) return;
                 
-                const playerState = this.playerBloc.getState();
-                // Если уже выбран этот тип - отменяем выбор
-                if (playerState.selectedSoldierType === type) {
-                    this.playerBloc.clearSelection();
+                const gameState = this.gameBloc.getState();
+                const currentPlayer = gameState.currentPlayer;
+                
+                // Сразу создаем солдата у ворот
+                // Центр: индекс 7 → столбец 8 (чётный с 1) → используется индекс 7
+                const centerX = Math.floor(this.hexGrid.width / 2); // Центр индекс 7
+                // Для игрока 1 ворота на последней строке, на чётной позиции (считая с 1): индекс 7 → столбец 8
+                const gateX = currentPlayer === 1 ? centerX : centerX; // Оба используют центр
+                const gateY = currentPlayer === 1 ? this.hexGrid.height - 1 : 0; // Игрок 1: последняя строка, Игрок 2: верхняя строка
+                const gatePos = {x: gateX, y: gateY};
+                
+                console.log('Создание солдата у ворот:', { gatePos, currentPlayer });
+                
+                const success = this.soldierBloc.createSoldier(gatePos, currentPlayer, type);
+                if (success) {
+                    // В режиме кампании не переключаем игрока
+                    if (gameState.gameMode !== 'campaign') {
+                        this.gameBloc.switchPlayer();
+                    }
                 } else {
-                    this.playerBloc.selectSoldierType(type);
+                    console.log('Не удалось создать солдата. Недостаточно золота или другая ошибка.');
                 }
             });
         });
@@ -352,16 +367,15 @@ class Game {
             console.log('=== MOUSEDOWN НА КАНВАСЕ ===', e.button);
         }, false);
         
-        // Отслеживание движения мыши для визуализации
+        // Отслеживание движения мыши для подсветки ячейки
         this.canvas.addEventListener('mousemove', (e) => {
             this.updateMousePosition(e);
-            this.render(); // Перерисовываем для показа позиции мыши
+            this.render(); // Перерисовываем для подсветки ячейки
         }, false);
         
         // Очистка позиции при уходе мыши с канваса
         this.canvas.addEventListener('mouseleave', () => {
             this.mousePosition = null;
-            this.mouseHistory = [];
             this.render();
         }, false);
         
@@ -379,6 +393,18 @@ class Game {
             
             this.render();
         }, { passive: false });
+        
+        // Настройка скорости солдат
+        const speedSlider = document.getElementById('soldier-speed-slider');
+        const speedValue = document.getElementById('soldier-speed-value');
+        if (speedSlider && speedValue) {
+            speedSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                speedValue.textContent = value.toFixed(2);
+                this.soldierBloc.setSpeedMultiplier(value);
+                console.log('Скорость солдат изменена на:', value);
+            });
+        }
         
         console.log('Обработчики клика зарегистрированы');
     }
@@ -631,8 +657,11 @@ class Game {
         // Размещение препятствия
         if (playerState.selectedObstacleType) {
             // Нельзя ставить препятствия на базах
-            const isOnBase = arrHex.x === 0 || arrHex.x === this.hexGrid.width - 1;
-            if (isOnBase) {
+            // База игрока 2 (вверху) - вся верхняя строка (y === 0)
+            // База игрока 1 (внизу) - последняя строка (y === height - 1, только чётные ячейки)
+            const isOnPlayer2Base = arrHex.y === 0;
+            const isOnPlayer1Base = arrHex.y === this.hexGrid.height - 1 && arrHex.x % 2 === 1; // Последняя строка, чётные столбцы (с 1) → индексы нечётные
+            if (isOnPlayer1Base || isOnPlayer2Base) {
                 console.log('Нельзя ставить препятствия на базе');
                 return;
             }
@@ -689,8 +718,11 @@ class Game {
             // Если клик на пустую ячейку, которая не подходит для размещения - отменяем выбор
             if (!existingTower) {
                 // Проверяем, можно ли поставить башню здесь
-                const isOnBase = arrHex.x === 0 || arrHex.x === this.hexGrid.width - 1;
-                if (isOnBase) {
+                // База игрока 2 (вверху) - вся верхняя строка (y === 0)
+                // База игрока 1 (внизу) - последняя строка (y === height - 1, только чётные ячейки)
+                const isOnPlayer2Base = arrHex.y === 0;
+                const isOnPlayer1Base = arrHex.y === this.hexGrid.height - 1 && arrHex.x % 2 === 1; // Последняя строка, чётные столбцы (с 1) → индексы нечётные
+                if (isOnPlayer1Base || isOnPlayer2Base) {
                     console.log('Нельзя ставить башни на базе - отмена выбора');
                     this.playerBloc.clearSelection();
                     return;
@@ -724,28 +756,6 @@ class Game {
             }
         }
         
-        // Отправка солдата
-        if (playerState.selectedSoldierType) {
-            // Солдаты отправляются только со своей базы (первый или последний столбец)
-            const isOnBase = (currentPlayer === 1 && arrHex.x === 0) || 
-                            (currentPlayer === 2 && arrHex.x === this.hexGrid.width - 1);
-            
-            if (isOnBase) {
-                // Передаем array координаты напрямую
-                const success = this.soldierBloc.createSoldier(arrHex, currentPlayer, playerState.selectedSoldierType);
-                if (success) {
-                    this.playerBloc.clearSelection();
-                    // В режиме кампании не переключаем игрока
-                    if (gameState.gameMode !== 'campaign') {
-                        this.gameBloc.switchPlayer();
-                    }
-                } else {
-                    console.log('Не удалось отправить солдата. Недостаточно золота или другая ошибка.');
-                }
-            } else {
-                console.log('Солдаты отправляются только со своей базы (первый/последний столбец)');
-            }
-        }
     }
 
     gameLoop(currentTime = performance.now()) {
@@ -794,37 +804,13 @@ class Game {
         const gridX = fieldX - offsetX;
         const gridY = fieldY - offsetY;
         
-        // Сохраняем позицию
+        // Преобразуем в hex координаты для подсветки ячейки
+        const hex = this.hexGrid.pixelToHex(gridX, gridY);
+        
+        // Сохраняем позицию с hex координатами
         this.mousePosition = {
-            fieldX: fieldX,
-            fieldY: fieldY,
-            gridX: gridX,
-            gridY: gridY,
-            clientX: e.clientX,
-            clientY: e.clientY,
-            rectLeft: rect.left,
-            rectTop: rect.top,
-            scrollX: scrollX,
-            scrollY: scrollY,
-            visibleX: visibleX,
-            visibleY: visibleY
+            hex: this.hexGrid.isValidHex(hex) ? hex : null
         };
-        
-        // Добавляем в историю
-        this.mouseHistory.push({
-            x: gridX,
-            y: gridY,
-            time: Date.now()
-        });
-        
-        // Ограничиваем длину истории
-        if (this.mouseHistory.length > this.maxHistoryLength) {
-            this.mouseHistory.shift();
-        }
-        
-        // Удаляем старые точки (старше 2 секунд)
-        const now = Date.now();
-        this.mouseHistory = this.mouseHistory.filter(point => now - point.time < 2000);
     }
 
     render() {
@@ -834,7 +820,7 @@ class Game {
         const playerState = this.playerBloc.getState();
         const obstacleState = this.obstacleBloc.getState();
         
-        this.renderer.render(gameState, towerState, soldierState, playerState, this.mousePosition, this.mouseHistory, obstacleState);
+        this.renderer.render(gameState, towerState, soldierState, playerState, this.mousePosition, obstacleState);
     }
 }
 

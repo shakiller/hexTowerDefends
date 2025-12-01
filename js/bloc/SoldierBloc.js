@@ -1,11 +1,13 @@
 export class SoldierBloc {
-    constructor(gameBloc) {
+    constructor(gameBloc, hexGrid) {
         this.gameBloc = gameBloc;
+        this.hexGrid = hexGrid;
         this.state = {
             soldiers: [] // {id, playerId, x, y, type, level, health, damage, speed, targetX, targetY}
         };
         this.listeners = [];
         this.soldierIdCounter = 0;
+        this.speedMultiplier = 0.05; // Глобальный множитель скорости солдат (по умолчанию 0.05)
     }
 
     subscribe(listener) {
@@ -34,9 +36,11 @@ export class SoldierBloc {
             return false;
         }
 
-        // Определяем целевую позицию (вражеская база) - используем array координаты
-        const targetX = playerId === 1 ? 14 : 0; // Последний или первый столбец
-        const targetY = Math.floor(this.gameBloc.state.players[playerId].baseHealth % 45);
+        // Определяем целевую позицию (вражеские ворота) - используем array координаты
+        const centerX = Math.floor(this.hexGrid.width / 2); // Центр индекс 7 → столбец 8 (чётный с 1)
+        // Для игрока 1 ворота на последней строке, на чётной позиции (считая с 1): индекс 7 → столбец 8
+        const targetX = centerX; // Центр (индекс 7 → столбец 8, чётный с 1)
+        const targetY = playerId === 1 ? 0 : this.hexGrid.height - 1; // Игрок 1 идёт к верху, игрок 2 к последней строке
 
         const soldier = {
             id: this.soldierIdCounter++,
@@ -82,11 +86,26 @@ export class SoldierBloc {
     }
 
     getSoldierConfig(type) {
-        const configs = {
-            basic: { health: 50, damage: 5, speed: 1, cost: 50 },
+        const baseConfigs = {
+            basic: { health: 50, damage: 5, speed: 1.0, cost: 50 },
             strong: { health: 100, damage: 10, speed: 1.5, cost: 100 }
         };
-        return configs[type] || configs.basic;
+        const config = baseConfigs[type] || baseConfigs.basic;
+        // Применяем глобальный множитель скорости
+        return {
+            ...config,
+            speed: config.speed * this.speedMultiplier
+        };
+    }
+
+    setSpeedMultiplier(multiplier) {
+        this.speedMultiplier = multiplier;
+        // Обновляем скорость существующих солдат
+        this.state.soldiers.forEach(soldier => {
+            const baseSpeed = soldier.type === 'strong' ? 1.5 : 1.0;
+            soldier.speed = baseSpeed * this.speedMultiplier;
+        });
+        this.emit();
     }
 
     updateSoldiers(deltaTime, towerBloc) {
