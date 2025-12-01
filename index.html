@@ -81,6 +81,65 @@
         </div>
     </div>
 
-    <script type="module" src="js/main.js?v=14"></script>
+    <script>
+        // Проверка загрузки
+        console.log('=== index.html загружен ===');
+        console.log('Протокол:', window.location.protocol);
+        
+        if (window.location.protocol === 'file:') {
+            console.error('=== ОШИБКА: Файл открыт через file:// ===');
+            console.error('ES6 модули НЕ РАБОТАЮТ через file://');
+            alert('Игра не работает через file://!\n\nЗапустите локальный сервер:\n1. VS Code: "Live Server" → "Go Live"\n2. Или: python server.py\n3. Откройте http://localhost:8000');
+        }
+        
+        window.addEventListener('error', (e) => {
+            console.error('=== ГЛОБАЛЬНАЯ ОШИБКА ===', e.message, e.filename, e.lineno);
+        });
+        
+        window.addEventListener('unhandledrejection', (e) => {
+            console.error('=== UNHANDLED REJECTION ===', e.reason);
+        });
+    </script>
+    <script>
+        // Обработка ошибок от расширений браузера
+        window.addEventListener('error', (e) => {
+            if (e.message && e.message.includes('message channel closed')) {
+                console.warn('Ошибка расширения браузера (не критично):', e.message);
+                // Не блокируем выполнение - продолжаем работу
+                return true;
+            }
+        });
+        
+        // Обработка необработанных Promise rejections
+        window.addEventListener('unhandledrejection', (e) => {
+            if (e.reason && e.reason.message && e.reason.message.includes('message channel closed')) {
+                console.warn('Promise rejection от расширения (не критично):', e.reason.message);
+                e.preventDefault(); // Предотвращаем вывод ошибки
+                return;
+            }
+        });
+        
+        console.log('Обработка ошибок расширений настроена');
+        
+        // Глобальный обработчик для диагностики - ДО загрузки модуля
+        console.log('Установка глобального обработчика кликов...');
+        
+        // Используем setTimeout чтобы убедиться, что обработчики установлены после всех ошибок
+        setTimeout(() => {
+            document.addEventListener('click', (e) => {
+                try {
+                    const id = e.target.id || e.target.closest('button')?.id;
+                    if (id === 'btn-pvp' || id === 'btn-pve' || id === 'btn-campaign') {
+                        console.log('=== ГЛОБАЛЬНЫЙ ОБРАБОТЧИК: клик по кнопке меню ===', id, e.target);
+                    }
+                } catch (err) {
+                    console.error('Ошибка в обработчике клика:', err);
+                }
+            }, true); // capture phase
+            
+            console.log('Глобальный обработчик кликов установлен');
+        }, 100);
+    </script>
+    <script type="module" src="js/main.js?v=28"></script>
 </body>
 </html>

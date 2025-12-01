@@ -1,3 +1,6 @@
+console.log('=== НАЧАЛО ЗАГРУЗКИ main.js ===');
+console.log('Если вы видите это сообщение, значит модуль main.js загружается!');
+
 import { GameBloc } from './bloc/GameBloc.js';
 import { PlayerBloc } from './bloc/PlayerBloc.js';
 import { TowerBloc } from './bloc/TowerBloc.js';
@@ -5,6 +8,8 @@ import { SoldierBloc } from './bloc/SoldierBloc.js';
 import { HexGrid } from './game/HexGrid.js';
 import { Renderer } from './game/Renderer.js';
 import { BotAI } from './game/BotAI.js';
+
+console.log('=== ИМПОРТЫ ЗАГРУЖЕНЫ ===');
 
 class Game {
     constructor() {
@@ -20,10 +25,21 @@ class Game {
         
         this.lastTime = 0;
         this.isRunning = false;
+        this.wasDragForClick = false; // Инициализация флага для проверки drag
         
+        console.log('Вызов setupEventListeners...');
         this.setupEventListeners();
+        console.log('setupEventListeners завершён');
+        
+        console.log('Вызов setupBLoCSubscriptions...');
         this.setupBLoCSubscriptions();
+        console.log('setupBLoCSubscriptions завершён');
+        
+        console.log('Вызов setupDragToScroll...');
         this.setupDragToScroll();
+        console.log('setupDragToScroll завершён');
+        
+        console.log('=== КОНСТРУКТОР Game ЗАВЕРШЁН ===');
         
         // Обработка изменения размера окна
         window.addEventListener('resize', () => {
@@ -39,126 +55,130 @@ class Game {
         let isDragging = false;
         let startX, startY;
         let scrollLeft, scrollTop;
-        let dragDistance = 0;
-        let wasDrag = false;
 
-        // Обработка на контейнере
+        // Drag-to-scroll только при зажатии ПРАВОЙ кнопки мыши
+        // Левой кнопкой на канвасе - только клики
         container.addEventListener('mousedown', (e) => {
-            if (e.target === this.canvas) {
-                isDragging = false;
-                wasDrag = false;
-                dragDistance = 0;
-                startX = e.clientX;
-                startY = e.clientY;
+            // НИКОГДА не трогаем канвас - он для игры
+            if (e.target === this.canvas || this.canvas.contains(e.target)) {
+                return;
+            }
+            
+            // Только правая кнопка для drag-to-scroll на фоне контейнера
+            if (e.button === 2) {
+                isDragging = true;
+                startX = e.pageX;
+                startY = e.pageY;
                 scrollLeft = container.scrollLeft;
                 scrollTop = container.scrollTop;
-            }
-        });
-
-        container.addEventListener('mousemove', (e) => {
-            if (e.target === this.canvas || e.target === container) {
-                if (!isDragging && (startX !== undefined || startY !== undefined)) {
-                    const dx = e.clientX - startX;
-                    const dy = e.clientY - startY;
-                    dragDistance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    // Если перемещение больше 8 пикселей, начинаем перетаскивание
-                    // Больший порог чтобы не блокировать обычные клики
-                    if (dragDistance > 8) {
-                        isDragging = true;
-                        wasDrag = true;
-                        container.style.cursor = 'grabbing';
-                    }
-                }
-                
-                if (isDragging) {
-                    e.preventDefault();
-                    const walkX = (e.clientX - startX);
-                    const walkY = (e.clientY - startY);
-                    container.scrollLeft = scrollLeft - walkX;
-                    container.scrollTop = scrollTop - walkY;
-                }
-            }
-        });
-
-        container.addEventListener('mouseup', (e) => {
-            // Если был drag, не обрабатываем клик
-            if (wasDrag && dragDistance > 5) {
+                container.style.cursor = 'grabbing';
                 e.preventDefault();
-                e.stopPropagation();
             }
+        });
+        
+        // Прокрутка колесиком мыши
+        container.addEventListener('wheel', (e) => {
+            container.scrollLeft += e.deltaX;
+            container.scrollTop += e.deltaY;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
             
-            // Сбрасываем флаги после небольшой задержки
-            setTimeout(() => {
-                if (wasDrag) {
-                    wasDrag = false;
-                }
-            }, 100);
-            
-            isDragging = false;
-            container.style.cursor = 'grab';
-            startX = undefined;
-            startY = undefined;
-            dragDistance = 0;
+            const walkX = (e.pageX - startX);
+            const walkY = (e.pageY - startY);
+            container.scrollLeft = scrollLeft - walkX;
+            container.scrollTop = scrollTop - walkY;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                container.style.cursor = '';
+            }
         });
 
         container.addEventListener('mouseleave', () => {
-            isDragging = false;
-            container.style.cursor = 'grab';
-            wasDrag = false;
-        });
-
-        // Отслеживаем, было ли перетаскивание для предотвращения клика
-        let preventClick = false;
-        
-        container.addEventListener('mousedown', () => {
-            preventClick = false;
-        });
-        
-        container.addEventListener('mousemove', () => {
-            if (dragDistance > 8) {
-                preventClick = true;
+            if (isDragging) {
+                isDragging = false;
+                container.style.cursor = '';
             }
         });
         
-        // Отменяем клик на канвасе только если было реальное перетаскивание
-        this.canvas.addEventListener('click', (e) => {
-            // Блокируем только если было перемещение больше 8 пикселей
-            if (preventClick && dragDistance > 8) {
+        // Блокируем контекстное меню только на фоне контейнера
+        container.addEventListener('contextmenu', (e) => {
+            if (e.target === container && e.target !== this.canvas && !this.canvas.contains(e.target)) {
                 e.preventDefault();
-                e.stopPropagation();
-                preventClick = false;
-                dragDistance = 0;
-                return false;
             }
-            preventClick = false;
-            dragDistance = 0;
-        }, true);
+        });
     }
 
     setupEventListeners() {
+        console.log('=== setupEventListeners НАЧАЛО ===');
         // Меню
         const btnPvp = document.getElementById('btn-pvp');
         const btnPve = document.getElementById('btn-pve');
         const btnCampaign = document.getElementById('btn-campaign');
         
         if (!btnPvp || !btnPve || !btnCampaign) {
-            console.error('Кнопки меню не найдены!');
+            console.error('Кнопки меню не найдены!', {
+                btnPvp: !!btnPvp,
+                btnPve: !!btnPve,
+                btnCampaign: !!btnCampaign
+            });
+            console.error('Ищем кнопки через querySelector...');
+            const btnPvp2 = document.querySelector('#btn-pvp');
+            const btnPve2 = document.querySelector('#btn-pve');
+            const btnCampaign2 = document.querySelector('#btn-campaign');
+            console.error('Результаты querySelector:', {
+                btnPvp2: !!btnPvp2,
+                btnPve2: !!btnPve2,
+                btnCampaign2: !!btnCampaign2
+            });
             return;
         }
         
-        btnPvp.addEventListener('click', () => {
-            console.log('Клик по PvP');
-            this.startGame('pvp');
+        console.log('Кнопки меню найдены:', {
+            btnPvp: btnPvp,
+            btnPve: btnPve,
+            btnCampaign: btnCampaign
         });
-        btnPve.addEventListener('click', () => {
-            console.log('Клик по PvE');
-            this.startGame('pve');
+        
+        // Используем и addEventListener и onclick для надёжности
+        const handleMenuClick = (mode, e) => {
+            console.log(`=== КЛИК ПО ${mode.toUpperCase()} ===`);
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            this.startGame(mode);
+        };
+        
+        // Простая регистрация - только addEventListener
+        btnPvp.addEventListener('click', (e) => {
+            console.log('=== КЛИК ПО PVP (addEventListener) ===', e);
+            e.preventDefault();
+            e.stopPropagation();
+            handleMenuClick('pvp', e);
         });
-        btnCampaign.addEventListener('click', () => {
-            console.log('Клик по Campaign');
-            this.startGame('campaign');
+        
+        btnPve.addEventListener('click', (e) => {
+            console.log('=== КЛИК ПО PVE (addEventListener) ===', e);
+            e.preventDefault();
+            e.stopPropagation();
+            handleMenuClick('pve', e);
         });
+        
+        btnCampaign.addEventListener('click', (e) => {
+            console.log('=== КЛИК ПО CAMPAIGN (addEventListener) ===', e);
+            e.preventDefault();
+            e.stopPropagation();
+            handleMenuClick('campaign', e);
+        });
+        
+        console.log('Обработчики кнопок меню зарегистрированы');
+        console.log('Попробуйте кликнуть по кнопке - должно появиться сообщение');
         
         // Игровые кнопки
         document.getElementById('btn-pause').addEventListener('click', () => {
@@ -193,10 +213,24 @@ class Game {
         });
         
         // Панель башен
-        document.querySelectorAll('.tower-btn').forEach(btn => {
+        const towerButtons = document.querySelectorAll('.tower-btn');
+        console.log('Найдено кнопок башен:', towerButtons.length);
+        
+        towerButtons.forEach((btn, index) => {
+            console.log(`Регистрация обработчика для кнопки башни ${index}:`, btn);
             btn.addEventListener('click', (e) => {
-                const type = e.target.dataset.type;
+                console.log('=== КЛИК ПО КНОПКЕ БАШНИ ===');
+                const type = e.target.dataset.type || e.target.closest('.tower-btn')?.dataset.type;
+                console.log('Тип башни:', type);
+                
+                if (!type) {
+                    console.error('Тип башни не найден!', e.target);
+                    return;
+                }
+                
                 this.playerBloc.selectTowerType(type);
+                const playerState = this.playerBloc.getState();
+                console.log('Состояние после выбора башни:', playerState);
             });
         });
         
@@ -242,10 +276,35 @@ class Game {
             }
         });
         
-        // Клик по канвасу
+        // Клик по канвасу - самый простой обработчик без блокировок
+        if (!this.canvas) {
+            console.error('Канвас не найден!');
+            return;
+        }
+        
+        console.log('Регистрация обработчика клика на канвасе');
+        console.log('Канвас:', this.canvas);
+        console.log('Размер канваса:', this.canvas.width, 'x', this.canvas.height);
+        
+        // Обработчик клика на канвасе
         this.canvas.addEventListener('click', (e) => {
+            console.log('=== КЛИК НА КАНВАСЕ ЗАРЕГИСТРИРОВАН ===', {
+                button: e.button,
+                clientX: e.clientX,
+                clientY: e.clientY,
+                target: e.target,
+                currentTarget: e.currentTarget
+            });
+            e.stopPropagation();
             this.handleCanvasClick(e);
-        });
+        }, false);
+        
+        // Также mousedown для отладки
+        this.canvas.addEventListener('mousedown', (e) => {
+            console.log('=== MOUSEDOWN НА КАНВАСЕ ===', e.button);
+        }, false);
+        
+        console.log('Обработчики клика зарегистрированы');
     }
 
     setupBLoCSubscriptions() {
@@ -254,7 +313,9 @@ class Game {
         });
         
         this.playerBloc.subscribe((state) => {
+            console.log('PlayerBloc состояние изменилось:', state);
             this.updatePlayerPanel(state);
+            this.render(); // Перерисовываем при изменении выбора башни/солдата
         });
         
         this.towerBloc.subscribe(() => {
@@ -267,13 +328,19 @@ class Game {
     }
 
     startGame(mode) {
+        console.log('=== startGame ВЫЗВАН ===', mode);
+        
         // Очищаем состояние игры
         this.towerBloc.reset();
         this.soldierBloc.reset();
         this.playerBloc.clearSelection();
         
+        console.log('Запуск игры в режиме:', mode);
         this.gameBloc.startGame(mode);
+        console.log('Состояние игры после startGame:', this.gameBloc.getState());
+        
         this.showScreen('game-screen');
+        console.log('Экран игры показан');
         
         // Пересчитываем размеры канваса после показа экрана
         // Используем requestAnimationFrame для гарантии отрисовки
@@ -363,14 +430,20 @@ class Game {
     }
 
     handleCanvasClick(e) {
+        console.log('=== ОБРАБОТКА КЛИКА НА КАНВАСЕ ===');
+        
         const gameState = this.gameBloc.getState();
+        console.log('Состояние игры:', gameState.gameState);
+        
         if (gameState.gameState !== 'playing') {
-            console.log('Игра не запущена');
+            console.log('Игра не запущена! Текущее состояние:', gameState.gameState);
+            console.log('Запустите игру через меню (PvP/PvE/Campaign)');
             return;
         }
-        if ((gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') && gameState.currentPlayer === 2) return;
-        
-        console.log('Обработка клика на канвасе');
+        if ((gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') && gameState.currentPlayer === 2) {
+            console.log('Ход бота');
+            return;
+        }
         
         const rect = this.canvas.getBoundingClientRect();
         const container = document.getElementById('game-board-container');
@@ -383,40 +456,66 @@ class Game {
         const x = (e.clientX - rect.left) + container.scrollLeft - offsetX;
         const y = (e.clientY - rect.top) + container.scrollTop - offsetY;
         
-        console.log('Координаты:', { x, y, scrollLeft: container.scrollLeft, scrollTop: container.scrollTop });
+        console.log('Координаты клика:', { 
+            clientX: e.clientX, 
+            clientY: e.clientY,
+            rectLeft: rect.left,
+            rectTop: rect.top,
+            scrollLeft: container.scrollLeft, 
+            scrollTop: container.scrollTop,
+            offsetX,
+            offsetY,
+            calculatedX: x, 
+            calculatedY: y 
+        });
         
         const hex = this.hexGrid.pixelToHex(x, y);
+        console.log('Гексагон из координат:', hex);
+        
         if (!this.hexGrid.isValidHex(hex)) {
             console.log('Гексагон вне границ');
             return;
         }
         
         const arrHex = this.hexGrid.hexToArray(hex);
-        console.log('Выбранная ячейка:', arrHex);
+        console.log('Выбранная ячейка массива:', arrHex);
         
         const playerState = this.playerBloc.getState();
         const currentPlayer = gameState.currentPlayer;
         
+        console.log('Состояние:', {
+            selectedTowerType: playerState.selectedTowerType,
+            selectedSoldierType: playerState.selectedSoldierType,
+            currentPlayer,
+            gold: gameState.players[currentPlayer].gold
+        });
+        
         // Выбор башни или солдата для улучшения
         if (!playerState.selectedTowerType && !playerState.selectedSoldierType) {
-            console.log('Выбор ячейки');
+            console.log('Выбор ячейки для просмотра/улучшения');
             this.playerBloc.selectCell(arrHex);
             return;
         }
         
         // Размещение башни
         if (playerState.selectedTowerType) {
-            console.log('Попытка разместить башню:', playerState.selectedTowerType, 'на', arrHex);
+            console.log('ПОПЫТКА РАЗМЕСТИТЬ БАШНЮ:', {
+                type: playerState.selectedTowerType,
+                position: arrHex,
+                player: currentPlayer
+            });
             const success = this.towerBloc.createTower(arrHex, currentPlayer, playerState.selectedTowerType);
-            console.log('Результат:', success);
+            console.log('РЕЗУЛЬТАТ РАЗМЕЩЕНИЯ БАШНИ:', success);
+            
             if (success) {
+                console.log('Башня успешно размещена!');
                 this.playerBloc.clearSelection();
                 // В режиме кампании не переключаем игрока
                 if (gameState.gameMode !== 'campaign') {
                     this.gameBloc.switchPlayer();
                 }
             } else {
-                console.log('Не удалось разместить башню');
+                console.log('Не удалось разместить башню - проверьте консоль выше');
             }
         }
         
@@ -473,14 +572,28 @@ class Game {
     }
 }
 
-// Инициализация игры при загрузке
-document.addEventListener('DOMContentLoaded', () => {
-    try {
-        console.log('Инициализация игры...');
-        new Game();
-        console.log('Игра инициализирована успешно');
-    } catch (error) {
-        console.error('Ошибка при инициализации игры:', error);
-        alert('Ошибка загрузки игры. Проверьте консоль браузера. Возможно, нужно запустить локальный сервер (например, через Python: python -m http.server или через Live Server в VS Code).');
+// Инициализация игры при загрузке (только один раз)
+if (document.readyState === 'loading') {
+    console.log('=== ОЖИДАНИЕ DOMContentLoaded ===');
+    document.addEventListener('DOMContentLoaded', initGame);
+} else {
+    console.log('=== DOM УЖЕ ЗАГРУЖЕН, ИНИЦИАЛИЗИРУЕМ СРАЗУ ===');
+    initGame();
+}
+
+function initGame() {
+    if (window.game) {
+        console.log('Игра уже инициализирована, пропускаем');
+        return;
     }
-});
+    
+    try {
+        console.log('=== СОЗДАНИЕ Game ===');
+        window.game = new Game();
+        console.log('=== ИГРА УСПЕШНО ИНИЦИАЛИЗИРОВАНА ===');
+    } catch (error) {
+        console.error('=== ОШИБКА ПРИ ИНИЦИАЛИЗАЦИИ ИГРЫ ===', error);
+        console.error('Stack:', error.stack);
+        alert('Ошибка загрузки игры. Проверьте консоль браузера (F12). Ошибка: ' + error.message);
+    }
+}

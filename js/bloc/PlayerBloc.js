@@ -21,8 +21,10 @@ export class PlayerBloc {
     }
 
     selectTowerType(type) {
+        console.log('PlayerBloc.selectTowerType вызван с типом:', type);
         this.state.selectedTowerType = type;
         this.state.selectedSoldierType = null;
+        console.log('Состояние PlayerBloc после выбора:', { ...this.state });
         this.emit();
     }
 
