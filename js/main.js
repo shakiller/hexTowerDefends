@@ -767,7 +767,7 @@ class Game {
         
         if (gameState.gameState === 'playing') {
             // Обновление солдат
-            this.soldierBloc.updateSoldiers(deltaTime, this.towerBloc);
+            this.soldierBloc.updateSoldiers(deltaTime, this.towerBloc, this.obstacleBloc);
             
             // Обновление бота
             this.botAI.update(currentTime);

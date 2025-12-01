@@ -86,6 +86,96 @@ export class HexGrid {
         return arr.x >= 0 && arr.x < this.width && arr.y >= 0 && arr.y < this.height;
     }
 
+    getHexNeighbors(hex) {
+        // Возвращает соседей гексагона (6 направлений)
+        const directions = [
+            { q: 1, r: 0, s: -1 },   // Восток
+            { q: 1, r: -1, s: 0 },   // Северо-восток
+            { q: 0, r: -1, s: 1 },   // Северо-запад
+            { q: -1, r: 0, s: 1 },   // Запад
+            { q: -1, r: 1, s: 0 },   // Юго-запад
+            { q: 0, r: 1, s: -1 }    // Юго-восток
+        ];
+        
+        const neighbors = [];
+        for (const dir of directions) {
+            const neighbor = {
+                q: hex.q + dir.q,
+                r: hex.r + dir.r,
+                s: hex.s + dir.s
+            };
+            if (this.isValidHex(neighbor)) {
+                neighbors.push(neighbor);
+            }
+        }
+        return neighbors;
+    }
+
+    hexDistance(hex1, hex2) {
+        // Расстояние между двумя гексагонами (кубические координаты)
+        return (Math.abs(hex1.q - hex2.q) + Math.abs(hex1.r - hex2.r) + Math.abs(hex1.s - hex2.s)) / 2;
+    }
+
+    findPath(startHex, targetHex, obstacleBloc = null, towerBloc = null) {
+        // Простой жадный алгоритм поиска пути (движение к ближайшему соседу к цели)
+        // Если нужно обходить препятствия - использовать A*
+        const path = [];
+        let current = { ...startHex };
+        
+        // Ограничиваем максимальную длину пути
+        const maxPathLength = 100;
+        let iterations = 0;
+        
+        while (iterations < maxPathLength) {
+            iterations++;
+            path.push({ ...current });
+            
+            // Если достигли цели
+            if (current.q === targetHex.q && current.r === targetHex.r) {
+                break;
+            }
+            
+            // Находим ближайшего соседа к цели
+            const neighbors = this.getHexNeighbors(current);
+            let bestNeighbor = null;
+            let bestDistance = Infinity;
+            
+            for (const neighbor of neighbors) {
+                // Проверяем препятствия
+                const arrPos = this.hexToArray(neighbor);
+                if (obstacleBloc) {
+                    const obstacle = obstacleBloc.getObstacleAt(arrPos.x, arrPos.y);
+                    if (obstacle) continue; // Пропускаем препятствия
+                }
+                
+                // Проверяем башни
+                if (towerBloc) {
+                    const tower = towerBloc.getTowerAt(neighbor);
+                    if (tower) continue; // Пропускаем башни
+                }
+                
+                // Проверяем, не был ли этот гексагон уже в пути (избегаем циклов)
+                const alreadyInPath = path.some(p => p.q === neighbor.q && p.r === neighbor.r);
+                if (alreadyInPath) continue;
+                
+                const distance = this.hexDistance(neighbor, targetHex);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestNeighbor = neighbor;
+                }
+            }
+            
+            if (!bestNeighbor) {
+                // Не можем найти путь
+                break;
+            }
+            
+            current = bestNeighbor;
+        }
+        
+        return path;
+    }
+
     getHexCorners(hex) {
         const center = this.hexToPixel(hex);
         const corners = [];

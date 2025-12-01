@@ -34,10 +34,12 @@ export class BotAI {
         const action = Math.random();
 
         if (action < 0.4 && player.gold >= 50) {
-            // Отправить солдата
-            const startY = Math.floor(Math.random() * Math.min(this.hexGrid.width, this.hexGrid.height));
-            const startHex = this.hexGrid.arrayToHex(this.hexGrid.width - 1, startY);
-            this.soldierBloc.createSoldier(startHex, 2, 'basic');
+            // Отправить солдата из ворот (как у игрока)
+            const centerX = Math.floor(this.hexGrid.width / 2); // Центр индекс 7
+            const gateX = centerX; // Игрок 2 использует центр
+            const gateY = 0; // Игрок 2: верхняя строка (ворота)
+            const gatePos = {x: gateX, y: gateY};
+            this.soldierBloc.createSoldier(gatePos, 2, 'basic');
         } else if (action < 0.7 && player.gold >= 100) {
             // Построить башню (ближе к своей базе)
             const x = Math.floor(Math.random() * 10) + (this.hexGrid.width - 15);

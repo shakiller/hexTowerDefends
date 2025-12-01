@@ -45,16 +45,20 @@ export class SoldierBloc {
         const soldier = {
             id: this.soldierIdCounter++,
             playerId,
-            x: arrPos.x,
+            currentHexIndex: 0, // Индекс текущей ячейки в пути (float для плавной интерполяции)
+            path: null, // Массив гексагонов пути (будет вычислен в updateSoldiers)
+            startX: arrPos.x,
+            startY: arrPos.y,
+            x: arrPos.x, // Текущая позиция (float для плавного движения между ячейками)
             y: arrPos.y,
+            targetX,
+            targetY,
             type,
             level: 1,
             health: soldierConfig.health,
             maxHealth: soldierConfig.health,
             damage: soldierConfig.damage,
-            speed: soldierConfig.speed,
-            targetX,
-            targetY
+            speed: soldierConfig.speed
         };
 
         this.state.soldiers.push(soldier);
@@ -108,29 +112,59 @@ export class SoldierBloc {
         this.emit();
     }
 
-    updateSoldiers(deltaTime, towerBloc) {
+    updateSoldiers(deltaTime, towerBloc, obstacleBloc = null) {
         const soldiersToRemove = [];
         
         // Ограничиваем deltaTime, чтобы избежать больших скачков при первом кадре
         const normalizedDeltaTime = Math.min(deltaTime, 100); // Максимум 100мс за кадр
         
         this.state.soldiers.forEach(soldier => {
-            // Движение к цели
-            const dx = soldier.targetX - soldier.x;
-            const dy = soldier.targetY - soldier.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            // Если путь ещё не вычислен, вычисляем его
+            if (!soldier.path || soldier.path.length === 0) {
+                const startHex = this.hexGrid.arrayToHex(soldier.startX, soldier.startY);
+                const targetHex = this.hexGrid.arrayToHex(soldier.targetX, soldier.targetY);
+                soldier.path = this.hexGrid.findPath(startHex, targetHex, obstacleBloc, towerBloc);
+                soldier.currentHexIndex = 0;
+                soldier.x = soldier.startX;
+                soldier.y = soldier.startY;
+            }
             
-            // Порог достижения цели - достаточно близко (в пределах половины ячейки)
-            if (distance > 0.1) {
-                // Нормализованное направление движения
-                const moveDistance = soldier.speed * normalizedDeltaTime * 0.01;
-                soldier.x += (dx / distance) * moveDistance;
-                soldier.y += (dy / distance) * moveDistance;
-            } else {
-                // Достиг базы противника
+            // Если путь пустой, удаляем солдата (не можем найти путь)
+            if (!soldier.path || soldier.path.length === 0) {
+                soldiersToRemove.push(soldier.id);
+                return;
+            }
+            
+            // Получаем текущую и следующую ячейки в пути
+            const currentHexIndex = Math.floor(soldier.currentHexIndex);
+            if (currentHexIndex >= soldier.path.length - 1) {
+                // Достигли цели
                 const enemyPlayerId = soldier.playerId === 1 ? 2 : 1;
                 this.gameBloc.updatePlayerHealth(enemyPlayerId, soldier.damage);
                 soldiersToRemove.push(soldier.id);
+                return;
+            }
+            
+            const currentHex = soldier.path[currentHexIndex];
+            const nextHex = soldier.path[currentHexIndex + 1];
+            const currentArr = this.hexGrid.hexToArray(currentHex);
+            const nextArr = this.hexGrid.hexToArray(nextHex);
+            
+            // Плавное движение между ячейками
+            const dx = nextArr.x - soldier.x;
+            const dy = nextArr.y - soldier.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < 0.05) {
+                // Достигли следующей ячейки, переходим к следующей
+                soldier.currentHexIndex += 1;
+                soldier.x = nextArr.x;
+                soldier.y = nextArr.y;
+            } else {
+                // Двигаемся к следующей ячейке
+                const moveDistance = soldier.speed * normalizedDeltaTime * 0.01;
+                soldier.x += (dx / distance) * moveDistance;
+                soldier.y += (dy / distance) * moveDistance;
             }
 
             // Проверка попадания под огонь башен
