@@ -10,8 +10,22 @@ export class Renderer {
 
     setupCanvas() {
         const container = this.canvas.parentElement;
-        const maxWidth = container.clientWidth - 40;
-        const maxHeight = container.clientHeight - 40;
+        
+        // Если контейнер еще не имеет размеров, используем минимальные
+        let maxWidth = container.clientWidth - 40;
+        let maxHeight = container.clientHeight - 40;
+        
+        // Если размеры слишком маленькие, используем размеры окна или минимальные значения
+        if (maxWidth < 300 || maxHeight < 300 || !maxWidth || !maxHeight || isNaN(maxWidth) || isNaN(maxHeight)) {
+            maxWidth = Math.max(window.innerWidth - 100, 1000);
+            maxHeight = Math.max(window.innerHeight - 250, 700);
+            console.warn('Container too small or not initialized, using window dimensions:', { 
+                maxWidth, 
+                maxHeight,
+                containerWidth: container.clientWidth,
+                containerHeight: container.clientHeight
+            });
+        }
         
         // Вычисляем оптимальный размер гексагона для поля 15x45
         // Для pointy-top: горизонтальное расстояние между центрами = sqrt(3) * size

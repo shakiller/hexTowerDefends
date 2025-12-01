@@ -171,6 +171,14 @@ class Game {
         
         this.gameBloc.startGame(mode);
         this.showScreen('game-screen');
+        
+        // Пересчитываем размеры канваса после показа экрана
+        // Используем requestAnimationFrame для гарантии отрисовки
+        requestAnimationFrame(() => {
+            this.renderer.setupCanvas();
+            this.render();
+        });
+        
         this.isRunning = true;
         this.lastTime = performance.now();
         this.gameLoop();
