@@ -33,10 +33,11 @@ export class Renderer {
         this.hexGrid.hexHeight = this.hexGrid.hexSize * 2;
         this.hexGrid.hexWidth = Math.sqrt(3) * this.hexGrid.hexSize;
         
-        // Размеры канваса для всей сетки
-        const canvasWidth = this.hexGrid.width * this.hexGrid.hexWidth;
-        const canvasHeight = this.hexGrid.height * this.hexGrid.hexSize * 1.5 + this.hexGrid.hexSize;
+        // Размеры канваса для всей сетки с учетом множителей
+        const canvasWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const canvasHeight = this.hexGrid.height * this.hexGrid.hexSize * 1.5 * verticalMultiplier + this.hexGrid.hexSize;
         
+        // Используем максимальное пространство
         this.canvas.width = Math.min(canvasWidth, maxWidth);
         this.canvas.height = Math.min(canvasHeight, maxHeight);
         
@@ -57,7 +58,9 @@ export class Renderer {
         this.ctx.save();
         
         // Центрируем сетку на канвасе
-        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
         const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
@@ -80,7 +83,9 @@ export class Renderer {
     drawTowers(towers) {
         this.ctx.save();
         
-        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
         const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
@@ -113,7 +118,9 @@ export class Renderer {
     drawSoldiers(soldiers) {
         this.ctx.save();
         
-        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
         const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
@@ -152,7 +159,9 @@ export class Renderer {
         
         this.ctx.save();
         
-        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
         const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
@@ -167,7 +176,9 @@ export class Renderer {
     drawBases() {
         this.ctx.save();
         
-        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
         const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
@@ -175,13 +186,15 @@ export class Renderer {
         // База игрока 1 (слева) - первый столбец по всей высоте
         for (let y = 0; y < this.hexGrid.height; y++) {
             const hex = this.hexGrid.arrayToHex(0, y);
-            this.hexGrid.drawHex(this.ctx, hex, 'rgba(74, 144, 226, 0.5)', '#4a90e2');
+            // Более яркая заливка для лучшей видимости
+            this.hexGrid.drawHex(this.ctx, hex, 'rgba(74, 144, 226, 0.7)', '#4a90e2');
         }
         
         // База игрока 2 (справа) - последний столбец по всей высоте
         for (let y = 0; y < this.hexGrid.height; y++) {
             const hex = this.hexGrid.arrayToHex(this.hexGrid.width - 1, y);
-            this.hexGrid.drawHex(this.ctx, hex, 'rgba(226, 74, 74, 0.5)', '#e24a4a');
+            // Более яркая заливка для лучшей видимости
+            this.hexGrid.drawHex(this.ctx, hex, 'rgba(226, 74, 74, 0.7)', '#e24a4a');
         }
         
         this.ctx.restore();
