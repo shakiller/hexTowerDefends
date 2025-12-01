@@ -372,14 +372,18 @@ class Game {
                 if (gameState.gameMode !== 'campaign') {
                     this.gameBloc.switchPlayer();
                 }
+            } else {
+                console.log('Не удалось разместить башню. Проверьте, что клетка свободна и достаточно золота.');
             }
         }
         
         // Отправка солдата
         if (playerState.selectedSoldierType) {
-            // Солдаты отправляются только со своей базы
-            if ((currentPlayer === 1 && arrHex.x === 0) || 
-                (currentPlayer === 2 && arrHex.x === this.hexGrid.width - 1)) {
+            // Солдаты отправляются только со своей базы (первый или последний столбец)
+            const isOnBase = (currentPlayer === 1 && arrHex.x === 0) || 
+                            (currentPlayer === 2 && arrHex.x === this.hexGrid.width - 1);
+            
+            if (isOnBase) {
                 const success = this.soldierBloc.createSoldier(arrHex, currentPlayer, playerState.selectedSoldierType);
                 if (success) {
                     this.playerBloc.clearSelection();
@@ -387,7 +391,11 @@ class Game {
                     if (gameState.gameMode !== 'campaign') {
                         this.gameBloc.switchPlayer();
                     }
+                } else {
+                    console.log('Не удалось отправить солдата. Недостаточно золота или другая ошибка.');
                 }
+            } else {
+                console.log('Солдаты отправляются только со своей базы (первый/последний столбец)');
             }
         }
     }

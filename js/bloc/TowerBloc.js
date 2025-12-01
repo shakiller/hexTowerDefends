@@ -25,6 +25,13 @@ export class TowerBloc {
         
         const towerConfig = this.getTowerConfig(type);
         if (player.gold < towerConfig.cost) {
+            console.log('Недостаточно золота для башни. Нужно:', towerConfig.cost, 'Есть:', player.gold);
+            return false;
+        }
+
+        // Не ставим башни на базах (первый и последний столбец)
+        if (hex.x === 0 || hex.x === 14) {
+            console.log('Нельзя ставить башни на базе');
             return false;
         }
 
@@ -33,6 +40,7 @@ export class TowerBloc {
             t.x === hex.x && t.y === hex.y
         );
         if (existingTower) {
+            console.log('Клетка уже занята башней');
             return false;
         }
 

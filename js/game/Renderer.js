@@ -224,6 +224,12 @@ export class Renderer {
         this.clear();
         this.drawGrid();
         this.drawBases();
+        
+        // Подсветка доступных ячеек для размещения
+        if (playerState.selectedTowerType || playerState.selectedSoldierType) {
+            this.drawPlacementPreview(gameState, playerState, towerState);
+        }
+        
         this.drawTowers(towerState.towers);
         this.drawSoldiers(soldierState.soldiers);
         
@@ -231,4 +237,59 @@ export class Renderer {
             this.drawSelection(playerState.selectedCell, 'yellow');
         }
     }
+
+    drawPlacementPreview(gameState, playerState, towerState) {
+        this.ctx.save();
+        
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        const currentPlayer = gameState.currentPlayer;
+        const player = gameState.players[currentPlayer];
+        
+        // Подсветка для башен - все свободные ячейки
+        if (playerState.selectedTowerType) {
+            const towerCosts = { basic: 100, strong: 200 };
+            const towerCost = towerCosts[playerState.selectedTowerType] || 100;
+            
+            for (let x = 0; x < this.hexGrid.width; x++) {
+                for (let y = 0; y < this.hexGrid.height; y++) {
+                    const hex = this.hexGrid.arrayToHex(x, y);
+                    const existingTower = towerState.towers.find(t => t.x === x && t.y === y);
+                    
+                    // Не ставим башни на базах (первый и последний столбец)
+                    if (x === 0 || x === this.hexGrid.width - 1) continue;
+                    
+                    if (!existingTower && player.gold >= towerCost) {
+                        // Желтая подсветка для доступных ячеек
+                        this.hexGrid.drawHex(this.ctx, hex, 'rgba(255, 255, 0, 0.2)', 'rgba(255, 255, 0, 0.5)');
+                    } else if (existingTower && existingTower.playerId === currentPlayer) {
+                        // Зеленая подсветка для своих башен (можно улучшить)
+                        this.hexGrid.drawHex(this.ctx, hex, 'rgba(0, 255, 0, 0.2)', 'rgba(0, 255, 0, 0.5)');
+                    }
+                }
+            }
+        }
+        
+        // Подсветка для солдат - только база
+        if (playerState.selectedSoldierType) {
+            const soldierCosts = { basic: 50, strong: 100 };
+            const soldierCost = soldierCosts[playerState.selectedSoldierType] || 50;
+            
+            const baseX = currentPlayer === 1 ? 0 : this.hexGrid.width - 1;
+            for (let y = 0; y < this.hexGrid.height; y++) {
+                const hex = this.hexGrid.arrayToHex(baseX, y);
+                if (player.gold >= soldierCost) {
+                    // Голубая подсветка для базы
+                    this.hexGrid.drawHex(this.ctx, hex, 'rgba(0, 255, 255, 0.3)', 'rgba(0, 255, 255, 0.7)');
+                }
+            }
+        }
+        
+        this.ctx.restore();
+    }
+
 }
