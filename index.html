@@ -94,6 +94,11 @@
                         <input type="range" id="soldier-speed-slider" min="0.01" max="0.1" step="0.01" value="0.05" style="width: 100%;">
                     </div>
                 </div>
+
+                <div id="soldier-debug-panel" class="panel-section" style="max-height: 200px; overflow-y: auto; font-size: 0.75em; background: rgba(0,0,0,0.5); padding: 8px;">
+                    <h4 style="margin-bottom: 5px;">Отладка солдат</h4>
+                    <div id="soldier-debug-info" style="color: #ccc; white-space: pre-wrap; font-family: monospace; line-height: 1.4;"></div>
+                </div>
             </div>
         </div>
 
@@ -181,6 +186,6 @@
             console.log('Глобальный обработчик кликов установлен');
         }, 100);
     </script>
-    <script type="module" src="js/main.js?v=67"></script>
+    <script type="module" src="js/main.js?v=69"></script>
 </body>
 </html>

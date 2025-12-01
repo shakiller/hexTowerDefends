@@ -761,7 +761,8 @@ class Game {
     gameLoop(currentTime = performance.now()) {
         if (!this.isRunning) return;
         
-        const deltaTime = currentTime - this.lastTime;
+        // При первом кадре lastTime может быть 0, поэтому ограничиваем deltaTime
+        const deltaTime = this.lastTime > 0 ? currentTime - this.lastTime : 16; // 16мс = ~60 FPS
         const gameState = this.gameBloc.getState();
         
         if (gameState.gameState === 'playing') {
@@ -772,10 +773,43 @@ class Game {
             this.botAI.update(currentTime);
         }
         
+        // Обновление отладочной информации о солдатах
+        this.updateSoldierDebugInfo();
+        
         this.render();
         this.lastTime = currentTime;
         
         requestAnimationFrame((time) => this.gameLoop(time));
+    }
+
+    updateSoldierDebugInfo() {
+        const debugInfoEl = document.getElementById('soldier-debug-info');
+        if (!debugInfoEl) return;
+        
+        const soldierState = this.soldierBloc.getState();
+        const soldiers = soldierState.soldiers;
+        
+        if (soldiers.length === 0) {
+            debugInfoEl.textContent = 'Нет солдат';
+            return;
+        }
+        
+        let info = `Всего солдат: ${soldiers.length}\n\n`;
+        soldiers.forEach((soldier, index) => {
+            const dx = soldier.targetX - soldier.x;
+            const dy = soldier.targetY - soldier.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            info += `[${index}] ID:${soldier.id} P:${soldier.playerId} T:${soldier.type}\n`;
+            info += `  Позиция: x=${soldier.x.toFixed(3)} y=${soldier.y.toFixed(3)}\n`;
+            info += `  Цель: tx=${soldier.targetX} ty=${soldier.targetY}\n`;
+            info += `  Расстояние до цели: ${distance.toFixed(3)}\n`;
+            info += `  Скорость: ${soldier.speed.toFixed(4)}\n`;
+            info += `  Здоровье: ${soldier.health.toFixed(1)}/${soldier.maxHealth}\n`;
+            info += `\n`;
+        });
+        
+        debugInfoEl.textContent = info;
     }
 
     updateMousePosition(e) {

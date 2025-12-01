@@ -111,15 +111,21 @@ export class SoldierBloc {
     updateSoldiers(deltaTime, towerBloc) {
         const soldiersToRemove = [];
         
+        // Ограничиваем deltaTime, чтобы избежать больших скачков при первом кадре
+        const normalizedDeltaTime = Math.min(deltaTime, 100); // Максимум 100мс за кадр
+        
         this.state.soldiers.forEach(soldier => {
             // Движение к цели
             const dx = soldier.targetX - soldier.x;
             const dy = soldier.targetY - soldier.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
-            if (distance > 0.5) {
-                soldier.x += (dx / distance) * soldier.speed * deltaTime * 0.01;
-                soldier.y += (dy / distance) * soldier.speed * deltaTime * 0.01;
+            // Порог достижения цели - достаточно близко (в пределах половины ячейки)
+            if (distance > 0.1) {
+                // Нормализованное направление движения
+                const moveDistance = soldier.speed * normalizedDeltaTime * 0.01;
+                soldier.x += (dx / distance) * moveDistance;
+                soldier.y += (dy / distance) * moveDistance;
             } else {
                 // Достиг базы противника
                 const enemyPlayerId = soldier.playerId === 1 ? 2 : 1;
@@ -136,7 +142,7 @@ export class SoldierBloc {
                     const towerDistance = Math.sqrt(towerDx * towerDx + towerDy * towerDy);
                     
                     if (towerDistance <= tower.range) {
-                        soldier.health -= tower.damage * deltaTime * 0.01;
+                        soldier.health -= tower.damage * normalizedDeltaTime * 0.01;
                         if (soldier.health <= 0) {
                             soldiersToRemove.push(soldier.id);
                         }
