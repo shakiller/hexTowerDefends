@@ -254,22 +254,29 @@ class Game {
                 if (!type) return;
                 
                 const gameState = this.gameBloc.getState();
-                const currentPlayer = gameState.currentPlayer;
+                // В режимах PvE и Campaign игрок всегда 1, бот играет автоматически
+                // В PvP используется currentPlayer
+                const playerId = (gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') ? 1 : gameState.currentPlayer;
                 
                 // Сразу создаем солдата у ворот
                 // Центр: индекс 7 → столбец 8 (чётный с 1) → используется индекс 7
                 const centerX = Math.floor(this.hexGrid.width / 2); // Центр индекс 7
                 // Для игрока 1 ворота на последней строке, на чётной позиции (считая с 1): индекс 7 → столбец 8
-                const gateX = currentPlayer === 1 ? centerX : centerX; // Оба используют центр
-                const gateY = currentPlayer === 1 ? this.hexGrid.height - 1 : 0; // Игрок 1: последняя строка, Игрок 2: верхняя строка
+                const gateX = centerX; // Оба используют центр
+                const gateY = playerId === 1 ? this.hexGrid.height - 1 : 0; // Игрок 1: последняя строка, Игрок 2: верхняя строка
                 const gatePos = {x: gateX, y: gateY};
                 
-                console.log('Создание солдата у ворот:', { gatePos, currentPlayer });
+                console.log('Создание солдата у ворот:', { gatePos, playerId, gameMode: gameState.gameMode });
                 
-                const success = this.soldierBloc.createSoldier(gatePos, currentPlayer, type);
+                const success = this.soldierBloc.createSoldier(gatePos, playerId, type);
                 if (success) {
-                    // В режиме кампании не переключаем игрока
-                    if (gameState.gameMode !== 'campaign') {
+                    // Очищаем выбор после создания солдата
+                    this.playerBloc.clearSelection();
+                    // Обновляем UI после изменения золота
+                    this.updatePlayerPanel(this.playerBloc.getState());
+                    
+                    // Переключаем игрока только в режиме PvP
+                    if (gameState.gameMode === 'pvp') {
                         this.gameBloc.switchPlayer();
                     }
                 } else {
@@ -318,6 +325,8 @@ class Game {
         if (cancelBtn) {
             cancelBtn.addEventListener('click', () => {
                 this.playerBloc.clearSelection();
+                // Обновляем UI после очистки выбора, чтобы кнопки обновились
+                this.updatePlayerPanel(this.playerBloc.getState());
             });
         }
         
@@ -412,6 +421,9 @@ class Game {
     setupBLoCSubscriptions() {
         this.gameBloc.subscribe((state) => {
             this.updateUI(state);
+            // Обновляем кнопки при изменении золота
+            const playerState = this.playerBloc.getState();
+            this.updatePlayerPanel(playerState);
         });
         
         this.playerBloc.subscribe((state) => {
@@ -536,7 +548,9 @@ class Game {
 
     updatePlayerPanel(playerState) {
         const gameState = this.gameBloc.getState();
-        const currentPlayer = gameState.currentPlayer;
+        // В режимах PvE и Campaign для UI всегда показываем игрока 1
+        // В PvP используем currentPlayer
+        const currentPlayer = (gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') ? 1 : gameState.currentPlayer;
         
         // Обновление кнопок башен и солдат
         document.querySelectorAll('.tower-btn').forEach(btn => {
@@ -645,7 +659,9 @@ class Game {
         console.log('Выбранная ячейка массива:', arrHex);
         
         const playerState = this.playerBloc.getState();
-        const currentPlayer = gameState.currentPlayer;
+        // В режимах PvE и Campaign игрок всегда 1, бот играет автоматически
+        // В PvP используется currentPlayer
+        const currentPlayer = (gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') ? 1 : gameState.currentPlayer;
         
         console.log('Состояние:', {
             selectedTowerType: playerState.selectedTowerType,
@@ -747,8 +763,10 @@ class Game {
             if (success) {
                 console.log('Башня успешно размещена!');
                 this.playerBloc.clearSelection();
-                // В режиме кампании не переключаем игрока
-                if (gameState.gameMode !== 'campaign') {
+                // Обновляем UI после изменения золота
+                this.updatePlayerPanel(this.playerBloc.getState());
+                // Переключаем игрока только в режиме PvP
+                if (gameState.gameMode === 'pvp') {
                     this.gameBloc.switchPlayer();
                 }
             } else {
