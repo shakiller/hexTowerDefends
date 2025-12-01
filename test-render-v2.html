@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test Hex Render V2</title>
+    <style>
+        body { margin: 0; padding: 20px; background: #1a1a2e; }
+        canvas { border: 2px solid #4a90e2; background: #0f3460; }
+    </style>
+</head>
+<body>
+    <canvas id="test-canvas"></canvas>
+    <script type="module">
+        const canvas = document.getElementById('test-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        const width = 15;
+        const height = 45;
+        const hexSize = 20;
+        
+        canvas.width = width * hexSize * Math.sqrt(3) * 1.2;
+        canvas.height = height * hexSize * 1.5 * 1.2;
+        
+        ctx.translate(canvas.width / 2, hexSize);
+        
+        console.log('Drawing hexagons with rotation...');
+        
+        // Рисуем простую сетку
+        for (let x = 0; x < width; x++) {
+            for (let y = 0; y < height; y++) {
+                const centerX = (x - width/2) * hexSize * Math.sqrt(3);
+                const centerY = y * hexSize * 1.5 + ((x + 1) % 2) * hexSize * 0.5; // Четные столбцы сдвигаются вниз
+                
+                // Рисуем шестигранник - повернутый на 30 градусов
+                // Начальный угол -PI/3 (это -60 градусов, что на 30 градусов больше чем -90)
+                ctx.beginPath();
+                const startAngle = -Math.PI / 3;
+                for (let i = 0; i < 6; i++) {
+                    const angle = (Math.PI / 3) * i + startAngle;
+                    const px = centerX + hexSize * Math.cos(angle);
+                    const py = centerY + hexSize * Math.sin(angle);
+                    if (i === 0) {
+                        ctx.moveTo(px, py);
+                    } else {
+                        ctx.lineTo(px, py);
+                    }
+                }
+                ctx.closePath();
+                ctx.fillStyle = '#2a4a7a';
+                ctx.fill();
+                ctx.strokeStyle = '#4a90e2';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+        }
+        
+        console.log('Test render complete. Canvas size:', canvas.width, canvas.height);
+        console.log('Hexagons should be rotated 60 degrees');
+    </script>
+</body>
+</html>
+

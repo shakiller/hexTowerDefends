@@ -14,16 +14,21 @@ export class Renderer {
         const maxHeight = container.clientHeight - 40;
         
         // Вычисляем оптимальный размер гексагона для поля 15x45
-        // Для pointy-top: ширина = sqrt(3) * size, высота = 2 * size
-        // Вертикальное расстояние между центрами = 1.5 * size
-        // Горизонтальное расстояние = sqrt(3) * size
+        // Для pointy-top: горизонтальное расстояние между центрами = sqrt(3) * size
+        // Вертикальное расстояние между центрами = 1.5 * size (с учетом offset)
         
-        // Вычисляем размер, чтобы поле поместилось по ширине и высоте
-        const sizeByWidth = maxWidth / (this.hexGrid.width * Math.sqrt(3));
-        const sizeByHeight = maxHeight / (this.hexGrid.height * 1.5);
+        // Вычисляем размер, чтобы поле поместилось
+        // Учитываем множители из настроек
+        const horizontalMultiplier = 0.87;
+        const verticalMultiplier = 1.17;
+        const hexHorizontalSpacing = Math.sqrt(3) * horizontalMultiplier; // Относительное горизонтальное расстояние
+        const hexVerticalSpacing = 1.5 * verticalMultiplier; // Относительное вертикальное расстояние
         
-        const optimalHexSize = Math.min(sizeByWidth, sizeByHeight) * 0.95;
-        this.hexGrid.hexSize = Math.max(optimalHexSize, 10); // Минимум 10 пикселей
+        const sizeByWidth = maxWidth / (this.hexGrid.width * hexHorizontalSpacing);
+        const sizeByHeight = maxHeight / (this.hexGrid.height * hexVerticalSpacing);
+        
+        const optimalHexSize = Math.min(sizeByWidth, sizeByHeight) * 0.9;
+        this.hexGrid.hexSize = Math.max(optimalHexSize, 12); // Минимум 12 пикселей
         
         this.hexGrid.hexHeight = this.hexGrid.hexSize * 2;
         this.hexGrid.hexWidth = Math.sqrt(3) * this.hexGrid.hexSize;
@@ -34,6 +39,14 @@ export class Renderer {
         
         this.canvas.width = Math.min(canvasWidth, maxWidth);
         this.canvas.height = Math.min(canvasHeight, maxHeight);
+        
+        console.log('Canvas setup:', {
+            hexSize: this.hexGrid.hexSize,
+            canvasWidth: this.canvas.width,
+            canvasHeight: this.canvas.height,
+            maxWidth,
+            maxHeight
+        });
     }
 
     clear() {
@@ -44,7 +57,8 @@ export class Renderer {
         this.ctx.save();
         
         // Центрируем сетку на канвасе
-        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -66,7 +80,8 @@ export class Renderer {
     drawTowers(towers) {
         this.ctx.save();
         
-        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -98,7 +113,8 @@ export class Renderer {
     drawSoldiers(soldiers) {
         this.ctx.save();
         
-        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -136,7 +152,8 @@ export class Renderer {
         
         this.ctx.save();
         
-        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -150,7 +167,8 @@ export class Renderer {
     drawBases() {
         this.ctx.save();
         
-        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test Hex Render - Interactive</title>
+    <style>
+        body { margin: 0; padding: 20px; background: #1a1a2e; color: white; font-family: Arial; }
+        .controls { margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 8px; }
+        .control-group { margin: 10px 0; }
+        label { display: inline-block; width: 200px; }
+        input[type="range"] { width: 300px; }
+        .value { display: inline-block; margin-left: 10px; width: 80px; color: #4a90e2; font-weight: bold; }
+        canvas { border: 2px solid #4a90e2; background: #0f3460; display: block; margin: 0 auto; }
+        button { padding: 10px 20px; margin: 5px; background: #4a90e2; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #357abd; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <h2>Настройка гексагональной сетки</h2>
+        <div class="control-group">
+            <label>Сдвиг четных столбцов (0.0 - 1.0):</label>
+            <input type="range" id="offsetSlider" min="0" max="100" value="87" step="1">
+            <span class="value" id="offsetValue">0.87</span>
+        </div>
+        <div class="control-group">
+            <label>Размер гексагона:</label>
+            <input type="range" id="sizeSlider" min="5" max="30" value="30" step="1">
+            <span class="value" id="sizeValue">30</span>
+        </div>
+        <div class="control-group">
+            <label>Угол поворота (градусы):</label>
+            <input type="range" id="rotationSlider" min="-90" max="90" value="-60" step="1">
+            <span class="value" id="rotationValue">-60°</span>
+        </div>
+        <div class="control-group">
+            <label>Горизонтальное расстояние (множитель):</label>
+            <input type="range" id="horizontalSlider" min="50" max="200" value="87" step="1">
+            <span class="value" id="horizontalValue">0.87</span>
+        </div>
+        <div class="control-group">
+            <label>Вертикальное расстояние (множитель):</label>
+            <input type="range" id="verticalSlider" min="50" max="200" value="117" step="1">
+            <span class="value" id="verticalValue">1.17</span>
+        </div>
+        <div>
+            <button onclick="copyValues()">Скопировать значения в код</button>
+            <button onclick="resetValues()">Сбросить</button>
+        </div>
+    </div>
+    
+    <canvas id="test-canvas"></canvas>
+    
+    <div class="controls" style="margin-top: 20px;">
+        <h3>Значения для кода:</h3>
+        <pre id="codeOutput" style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; font-family: monospace;">
+// Значения будут обновляться автоматически
+        </pre>
+    </div>
+    
+    <script type="module">
+        let offsetValue = 0.87;
+        let hexSize = 30;
+        let rotationDeg = -60;
+        let horizontalMultiplier = 0.87;
+        let verticalMultiplier = 1.17;
+        
+        const canvas = document.getElementById('test-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        const width = 15;
+        const height = 45;
+        
+        function updateValues() {
+            offsetValue = parseFloat(document.getElementById('offsetSlider').value) / 100;
+            hexSize = parseFloat(document.getElementById('sizeSlider').value);
+            rotationDeg = parseFloat(document.getElementById('rotationSlider').value);
+            horizontalMultiplier = parseFloat(document.getElementById('horizontalSlider').value) / 100;
+            verticalMultiplier = parseFloat(document.getElementById('verticalSlider').value) / 100;
+            
+            document.getElementById('offsetValue').textContent = offsetValue.toFixed(2);
+            document.getElementById('sizeValue').textContent = hexSize;
+            document.getElementById('rotationValue').textContent = rotationDeg + '°';
+            document.getElementById('horizontalValue').textContent = horizontalMultiplier.toFixed(2);
+            document.getElementById('verticalValue').textContent = verticalMultiplier.toFixed(2);
+            
+            updateCodeOutput();
+            draw();
+        }
+        
+        function updateCodeOutput() {
+            const rotationRad = rotationDeg * Math.PI / 180;
+            const rotationFormula = rotationRad === -Math.PI / 3 ? '-Math.PI / 3' : 
+                                   rotationRad === -Math.PI / 6 ? '-Math.PI / 6' :
+                                   rotationRad === -Math.PI / 2 ? '-Math.PI / 2' :
+                                   rotationRad.toFixed(4);
+            
+            const code = `// hexToPixel метод:
+const x = this.hexSize * Math.sqrt(3) * col * ${horizontalMultiplier.toFixed(2)};
+const y = this.hexSize * 1.5 * row * ${verticalMultiplier.toFixed(2)} + ((col + 1) % 2) * this.hexSize * ${offsetValue.toFixed(2)};
+
+// getHexCorners метод:
+const startAngle = ${rotationFormula}; // ${rotationDeg} градусов`;
+            
+            document.getElementById('codeOutput').textContent = code;
+        }
+        
+        function draw() {
+            canvas.width = width * hexSize * Math.sqrt(3) * horizontalMultiplier * 1.2;
+            canvas.height = height * hexSize * 1.5 * verticalMultiplier * 1.2;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.translate(canvas.width / 2, hexSize);
+            
+            const rotationRad = rotationDeg * Math.PI / 180;
+            
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    const centerX = (x - width/2) * hexSize * Math.sqrt(3) * horizontalMultiplier;
+                    const centerY = y * hexSize * 1.5 * verticalMultiplier + ((x + 1) % 2) * hexSize * offsetValue;
+                    
+                    // Рисуем шестигранник
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (Math.PI / 3) * i + rotationRad;
+                        const px = centerX + hexSize * Math.cos(angle);
+                        const py = centerY + hexSize * Math.sin(angle);
+                        if (i === 0) {
+                            ctx.moveTo(px, py);
+                        } else {
+                            ctx.lineTo(px, py);
+                        }
+                    }
+                    ctx.closePath();
+                    ctx.fillStyle = '#2a4a7a';
+                    ctx.fill();
+                    ctx.strokeStyle = '#4a90e2';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        function copyValues() {
+            const rotationRad = rotationDeg * Math.PI / 180;
+            const rotationFormula = rotationRad === -Math.PI / 3 ? '-Math.PI / 3' : 
+                                   rotationRad === -Math.PI / 6 ? '-Math.PI / 6' :
+                                   rotationRad === -Math.PI / 2 ? '-Math.PI / 2' :
+                                   rotationRad.toFixed(4);
+            
+            const code = `// hexToPixel метод:
+const horizontalMultiplier = ${horizontalMultiplier.toFixed(2)};
+const verticalMultiplier = ${verticalMultiplier.toFixed(2)};
+const offsetMultiplier = ${offsetValue.toFixed(2)};
+const x = this.hexSize * Math.sqrt(3) * col * horizontalMultiplier;
+const y = this.hexSize * 1.5 * row * verticalMultiplier + ((col + 1) % 2) * this.hexSize * offsetMultiplier;
+
+// getHexCorners метод:
+const startAngle = ${rotationFormula}; // ${rotationDeg} градусов`;
+            
+            // Пробуем скопировать в буфер обмена
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(code).then(() => {
+                    alert('Значения скопированы в буфер обмена!');
+                }).catch(() => {
+                    // Если не получилось, показываем код в консоли и текстовом поле
+                    console.log(code);
+                    document.getElementById('codeOutput').textContent = code + '\n\n(Не удалось скопировать автоматически, код показан выше)';
+                    prompt('Скопируйте код:', code);
+                });
+            } else {
+                // Старый способ
+                const textarea = document.createElement('textarea');
+                textarea.value = code;
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    alert('Значения скопированы в буфер обмена!');
+                } catch (err) {
+                    console.log(code);
+                    document.getElementById('codeOutput').textContent = code + '\n\n(Не удалось скопировать автоматически)';
+                    prompt('Скопируйте код:', code);
+                }
+                document.body.removeChild(textarea);
+            }
+            
+            console.log('Значения для кода:');
+            console.log('Сдвиг четных столбцов:', offsetValue.toFixed(2));
+            console.log('Горизонтальное расстояние:', horizontalMultiplier.toFixed(2));
+            console.log('Вертикальное расстояние:', verticalMultiplier.toFixed(2));
+            console.log('Угол поворота:', rotationDeg, 'градусов');
+            console.log('\nКод для вставки:');
+            console.log(code);
+        }
+        
+        function resetValues() {
+            document.getElementById('offsetSlider').value = 87;
+            document.getElementById('sizeSlider').value = 30;
+            document.getElementById('rotationSlider').value = -60;
+            document.getElementById('horizontalSlider').value = 87;
+            document.getElementById('verticalSlider').value = 117;
+            updateValues();
+        }
+        
+        // Инициализация
+        document.getElementById('offsetSlider').addEventListener('input', updateValues);
+        document.getElementById('sizeSlider').addEventListener('input', updateValues);
+        document.getElementById('rotationSlider').addEventListener('input', updateValues);
+        document.getElementById('horizontalSlider').addEventListener('input', updateValues);
+        document.getElementById('verticalSlider').addEventListener('input', updateValues);
+        
+        updateValues();
+    </script>
+</body>
+</html>
+

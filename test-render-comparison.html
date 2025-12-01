@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test Hex Render - Comparison</title>
+    <style>
+        body { margin: 0; padding: 20px; background: #1a1a2e; display: flex; gap: 20px; }
+        .container { flex: 1; }
+        canvas { border: 2px solid #4a90e2; background: #0f3460; width: 100%; }
+        h3 { color: white; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h3>Вариант 1: Поворот +60° (угол -PI/6)</h3>
+        <canvas id="canvas1"></canvas>
+    </div>
+    <div class="container">
+        <h3>Вариант 2: Поворот -60° (угол -5PI/6)</h3>
+        <canvas id="canvas2"></canvas>
+    </div>
+    
+    <script type="module">
+        function drawHexes(canvasId, startAngle, color) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            
+            const width = 15;
+            const height = 20; // Меньше для теста
+            const hexSize = 15;
+            
+            canvas.width = width * hexSize * Math.sqrt(3) * 1.2;
+            canvas.height = height * hexSize * 1.5 * 1.2;
+            
+            ctx.translate(canvas.width / 2, hexSize);
+            
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    const centerX = (x - width/2) * hexSize * Math.sqrt(3);
+                    const centerY = y * hexSize * 1.5 + (x % 2) * hexSize * 0.5;
+                    
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (Math.PI / 3) * i + startAngle;
+                        const px = centerX + hexSize * Math.cos(angle);
+                        const py = centerY + hexSize * Math.sin(angle);
+                        if (i === 0) {
+                            ctx.moveTo(px, py);
+                        } else {
+                            ctx.lineTo(px, py);
+                        }
+                    }
+                    ctx.closePath();
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    ctx.strokeStyle = '#4a90e2';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        // Вариант 1: +60 градусов (начальный угол -PI/6)
+        drawHexes('canvas1', -Math.PI / 6, '#2a4a7a');
+        
+        // Вариант 2: -60 градусов (начальный угол -5PI/6)
+        drawHexes('canvas2', -5 * Math.PI / 6, '#4a2a7a');
+        
+        console.log('Оба варианта нарисованы. Выберите правильный поворот.');
+    </script>
+</body>
+</html>
+

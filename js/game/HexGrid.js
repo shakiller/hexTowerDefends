@@ -20,14 +20,21 @@ export class HexGrid {
     }
 
     hexToPixel(hex) {
-        // Конвертируем кубические координаты в offset координаты (odd-r)
+        // Используем offset координаты (odd-r)
+        // q - это колонка, r - это строка в offset координатах
         const col = hex.q;
         const row = hex.r + Math.floor(hex.q / 2);
         
-        // Для pointy-top гексагонов с odd-r offset координатами
-        // Нечетные столбцы (col % 2 == 1) сдвигаются вниз на полвысоты
-        const x = this.hexSize * Math.sqrt(3) * (col + 0.5);
-        const y = this.hexSize * (3/2 * row + (col % 2) * 0.5);
+        // Для pointy-top гексагонов с настройками:
+        // Горизонтальное расстояние: 0.87
+        // Вертикальное расстояние: 1.17
+        // Сдвиг четных столбцов: 0.87
+        const horizontalMultiplier = 0.87;
+        const verticalMultiplier = 1.17;
+        const offsetMultiplier = 0.87;
+        
+        const x = this.hexSize * Math.sqrt(3) * col * horizontalMultiplier;
+        const y = this.hexSize * 1.5 * row * verticalMultiplier + ((col + 1) % 2) * this.hexSize * offsetMultiplier;
         return { x, y };
     }
 
@@ -71,9 +78,10 @@ export class HexGrid {
     getHexCorners(hex) {
         const center = this.hexToPixel(hex);
         const corners = [];
-        // Для pointy-top гексагонов начинаем с верхней вершины (-PI/2)
+        // Угол поворота: -60 градусов
+        const startAngle = -Math.PI / 3; // -60 градусов
         for (let i = 0; i < 6; i++) {
-            const angle = Math.PI / 3 * i - Math.PI / 2;
+            const angle = Math.PI / 3 * i + startAngle;
             corners.push({
                 x: center.x + this.hexSize * Math.cos(angle),
                 y: center.y + this.hexSize * Math.sin(angle)

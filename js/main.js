@@ -257,7 +257,8 @@ class Game {
         if ((gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') && gameState.currentPlayer === 2) return; // Бот играет автоматически
         
         const rect = this.canvas.getBoundingClientRect();
-        const offsetX = (this.canvas.width - this.hexGrid.width * this.hexGrid.hexWidth) / 2;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth;
+        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         const x = e.clientX - rect.left - offsetX;
         const y = e.clientY - rect.top - offsetY;
