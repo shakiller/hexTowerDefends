@@ -19,24 +19,30 @@ export class SoldierBloc {
         this.listeners.forEach(listener => listener(this.state));
     }
 
-    createSoldier(startHex, playerId, type) {
+    createSoldier(startPos, playerId, type) {
+        // startPos может быть array координатами {x, y} или hex координатами {q, r, s}
+        // Преобразуем в array координаты если нужно
+        const arrPos = startPos.x !== undefined && startPos.y !== undefined ? startPos : 
+                      { x: startPos.q, y: startPos.r + Math.floor(startPos.q / 2) };
+        
         const gameState = this.gameBloc.getState();
         const player = gameState.players[playerId];
         
         const soldierConfig = this.getSoldierConfig(type);
         if (player.gold < soldierConfig.cost) {
+            console.log('Недостаточно золота для солдата. Нужно:', soldierConfig.cost, 'Есть:', player.gold);
             return false;
         }
 
-        // Определяем целевую позицию (вражеская база)
-        const targetX = playerId === 1 ? 44 : 0;
-        const targetY = Math.floor(this.gameBloc.state.players[playerId].baseHealth % 15);
+        // Определяем целевую позицию (вражеская база) - используем array координаты
+        const targetX = playerId === 1 ? 14 : 0; // Последний или первый столбец
+        const targetY = Math.floor(this.gameBloc.state.players[playerId].baseHealth % 45);
 
         const soldier = {
             id: this.soldierIdCounter++,
             playerId,
-            x: startHex.x,
-            y: startHex.y,
+            x: arrPos.x,
+            y: arrPos.y,
             type,
             level: 1,
             health: soldierConfig.health,

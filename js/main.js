@@ -5,6 +5,7 @@ import { GameBloc } from './bloc/GameBloc.js';
 import { PlayerBloc } from './bloc/PlayerBloc.js';
 import { TowerBloc } from './bloc/TowerBloc.js';
 import { SoldierBloc } from './bloc/SoldierBloc.js';
+import { ObstacleBloc } from './bloc/ObstacleBloc.js';
 import { HexGrid } from './game/HexGrid.js';
 import { Renderer } from './game/Renderer.js';
 import { BotAI } from './game/BotAI.js';
@@ -17,6 +18,7 @@ class Game {
         this.playerBloc = new PlayerBloc(this.gameBloc);
         this.towerBloc = new TowerBloc(this.gameBloc);
         this.soldierBloc = new SoldierBloc(this.gameBloc);
+        this.obstacleBloc = new ObstacleBloc();
         this.hexGrid = new HexGrid(15, 45);
         
         this.canvas = document.getElementById('game-canvas');
@@ -26,6 +28,11 @@ class Game {
         this.lastTime = 0;
         this.isRunning = false;
         this.wasDragForClick = false; // Инициализация флага для проверки drag
+        
+        // Отладка: отслеживание позиции мыши
+        this.mousePosition = null;
+        this.mouseHistory = []; // История позиций мыши для шлейфа
+        this.maxHistoryLength = 50; // Максимальная длина истории
         
         console.log('Вызов setupEventListeners...');
         this.setupEventListeners();
@@ -228,17 +235,47 @@ class Game {
                     return;
                 }
                 
-                this.playerBloc.selectTowerType(type);
                 const playerState = this.playerBloc.getState();
-                console.log('Состояние после выбора башни:', playerState);
+                // Если уже выбран этот тип - отменяем выбор
+                if (playerState.selectedTowerType === type) {
+                    this.playerBloc.clearSelection();
+                } else {
+                    this.playerBloc.selectTowerType(type);
+                }
+                const newState = this.playerBloc.getState();
+                console.log('Состояние после выбора башни:', newState);
             });
         });
         
         // Панель солдат
         document.querySelectorAll('.soldier-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const type = e.target.dataset.type;
-                this.playerBloc.selectSoldierType(type);
+                const type = e.target.dataset.type || e.target.closest('.soldier-btn')?.dataset.type;
+                if (!type) return;
+                
+                const playerState = this.playerBloc.getState();
+                // Если уже выбран этот тип - отменяем выбор
+                if (playerState.selectedSoldierType === type) {
+                    this.playerBloc.clearSelection();
+                } else {
+                    this.playerBloc.selectSoldierType(type);
+                }
+            });
+        });
+        
+        // Панель препятствий
+        document.querySelectorAll('.obstacle-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const type = e.target.dataset.type || e.target.closest('.obstacle-btn')?.dataset.type;
+                if (!type) return;
+                
+                const playerState = this.playerBloc.getState();
+                // Если уже выбран этот тип - отменяем выбор
+                if (playerState.selectedObstacleType === type) {
+                    this.playerBloc.clearSelection();
+                } else {
+                    this.playerBloc.selectObstacleType(type);
+                }
             });
         });
         
@@ -251,12 +288,23 @@ class Game {
                 const tower = this.towerBloc.getTowerAt(hex);
                 if (tower) {
                     const success = this.towerBloc.upgradeTower(tower.id);
-                    if (success && gameState.gameMode === 'pvp') {
-                        this.gameBloc.switchPlayer();
+                    if (success) {
+                        this.playerBloc.clearSelection();
+                        if (gameState.gameMode === 'pvp') {
+                            this.gameBloc.switchPlayer();
+                        }
                     }
                 }
             }
         });
+        
+        // Кнопка отмены выбора
+        const cancelBtn = document.getElementById('btn-cancel-selection');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                this.playerBloc.clearSelection();
+            });
+        }
         
         document.getElementById('btn-upgrade-soldier').addEventListener('click', () => {
             const gameState = this.gameBloc.getState();
@@ -304,6 +352,34 @@ class Game {
             console.log('=== MOUSEDOWN НА КАНВАСЕ ===', e.button);
         }, false);
         
+        // Отслеживание движения мыши для визуализации
+        this.canvas.addEventListener('mousemove', (e) => {
+            this.updateMousePosition(e);
+            this.render(); // Перерисовываем для показа позиции мыши
+        }, false);
+        
+        // Очистка позиции при уходе мыши с канваса
+        this.canvas.addEventListener('mouseleave', () => {
+            this.mousePosition = null;
+            this.mouseHistory = [];
+            this.render();
+        }, false);
+        
+        // Обработчик скролла для виртуального скролла внутри канваса
+        this.canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            this.renderer.scrollX += e.deltaX;
+            this.renderer.scrollY += e.deltaY;
+            
+            // Ограничиваем скролл размерами поля
+            const maxScrollX = Math.max(0, this.renderer.fieldWidth - this.canvas.width);
+            const maxScrollY = Math.max(0, this.renderer.fieldHeight - this.canvas.height);
+            this.renderer.scrollX = Math.max(0, Math.min(maxScrollX, this.renderer.scrollX));
+            this.renderer.scrollY = Math.max(0, Math.min(maxScrollY, this.renderer.scrollY));
+            
+            this.render();
+        }, { passive: false });
+        
         console.log('Обработчики клика зарегистрированы');
     }
 
@@ -325,6 +401,10 @@ class Game {
         this.soldierBloc.subscribe(() => {
             this.render();
         });
+        
+        this.obstacleBloc.subscribe(() => {
+            this.render();
+        });
     }
 
     startGame(mode) {
@@ -333,7 +413,10 @@ class Game {
         // Очищаем состояние игры
         this.towerBloc.reset();
         this.soldierBloc.reset();
+        this.obstacleBloc.reset();
         this.playerBloc.clearSelection();
+        
+        // Препятствия теперь устанавливаются вручную через UI (отключена автоматическая генерация)
         
         console.log('Запуск игры в режиме:', mode);
         this.gameBloc.startGame(mode);
@@ -352,6 +435,37 @@ class Game {
         this.isRunning = true;
         this.lastTime = performance.now();
         this.gameLoop();
+    }
+
+    initObstacles() {
+        // Добавляем случайные препятствия на карту
+        // Камни - неуничтожимые
+        // Деревья - можно разрушить
+        
+        const numStones = 10; // Количество камней
+        const numTrees = 20;  // Количество деревьев
+        
+        // Камни
+        for (let i = 0; i < numStones; i++) {
+            let x, y;
+            do {
+                x = Math.floor(Math.random() * (this.hexGrid.width - 2)) + 1; // Не на базах
+                y = Math.floor(Math.random() * this.hexGrid.height);
+            } while (this.obstacleBloc.getObstacleAt(x, y)); // Проверка, что клетка свободна
+            
+            this.obstacleBloc.addObstacle(x, y, 'stone');
+        }
+        
+        // Деревья
+        for (let i = 0; i < numTrees; i++) {
+            let x, y;
+            do {
+                x = Math.floor(Math.random() * (this.hexGrid.width - 2)) + 1; // Не на базах
+                y = Math.floor(Math.random() * this.hexGrid.height);
+            } while (this.obstacleBloc.getObstacleAt(x, y)); // Проверка, что клетка свободна
+            
+            this.obstacleBloc.addObstacle(x, y, 'tree');
+        }
     }
 
     stopGame() {
@@ -412,6 +526,16 @@ class Game {
         // Обновление кнопок улучшений
         const upgradeTowerBtn = document.getElementById('btn-upgrade-tower');
         const upgradeSoldierBtn = document.getElementById('btn-upgrade-soldier');
+        const cancelBtn = document.getElementById('btn-cancel-selection');
+        
+        // Показываем/скрываем кнопку отмены в зависимости от выбора
+        if (cancelBtn) {
+            if (playerState.selectedTowerType || playerState.selectedSoldierType || playerState.selectedObstacleType) {
+                cancelBtn.style.display = 'block';
+            } else {
+                cancelBtn.style.display = 'none';
+            }
+        }
         
         if (playerState.selectedCell) {
             const hex = this.hexGrid.arrayToHex(playerState.selectedCell.x, playerState.selectedCell.y);
@@ -447,14 +571,28 @@ class Game {
         
         const rect = this.canvas.getBoundingClientRect();
         const container = document.getElementById('game-board-container');
+        
+        // Координаты клика относительно видимой части канваса
+        const visibleX = e.clientX - rect.left;
+        const visibleY = e.clientY - rect.top;
+        
+        // Используем виртуальный скролл из Renderer
+        const scrollX = this.renderer.scrollX;
+        const scrollY = this.renderer.scrollY;
+        
+        // Координаты относительно всего поля (с учётом скролла)
+        const fieldX = visibleX + scrollX;
+        const fieldY = visibleY + scrollY;
+        
+        // Вычисляем offset так же, как в Renderer
         const horizontalMultiplier = 0.87;
         const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
-        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
+        const offsetX = Math.max(0, (this.renderer.fieldWidth - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         
-        // Учитываем скролл контейнера при расчете координат
-        const x = (e.clientX - rect.left) + container.scrollLeft - offsetX;
-        const y = (e.clientY - rect.top) + container.scrollTop - offsetY;
+        // Финальные координаты относительно сетки
+        const x = fieldX - offsetX;
+        const y = fieldY - offsetY;
         
         console.log('Координаты клика:', { 
             clientX: e.clientX, 
@@ -490,6 +628,43 @@ class Game {
             gold: gameState.players[currentPlayer].gold
         });
         
+        // Размещение препятствия
+        if (playerState.selectedObstacleType) {
+            // Нельзя ставить препятствия на базах
+            const isOnBase = arrHex.x === 0 || arrHex.x === this.hexGrid.width - 1;
+            if (isOnBase) {
+                console.log('Нельзя ставить препятствия на базе');
+                return;
+            }
+            
+            // Проверяем, не занята ли клетка
+            const existingObstacle = this.obstacleBloc.getObstacleAt(arrHex.x, arrHex.y);
+            const hex = this.hexGrid.arrayToHex(arrHex.x, arrHex.y);
+            const existingTower = this.towerBloc.getTowerAt(hex);
+            
+            if (existingObstacle) {
+                // Если клик на существующем препятствии - удаляем его (если дерево)
+                if (existingObstacle.type === 'tree') {
+                    this.obstacleBloc.removeObstacle(existingObstacle.id);
+                    this.playerBloc.clearSelection();
+                    return;
+                } else {
+                    console.log('Камень нельзя удалить');
+                    return;
+                }
+            }
+            
+            if (existingTower) {
+                console.log('Нельзя ставить препятствие на башне');
+                return;
+            }
+            
+            // Размещаем препятствие
+            this.obstacleBloc.addObstacle(arrHex.x, arrHex.y, playerState.selectedObstacleType);
+            this.playerBloc.clearSelection();
+            return;
+        }
+        
         // Выбор башни или солдата для улучшения
         if (!playerState.selectedTowerType && !playerState.selectedSoldierType) {
             console.log('Выбор ячейки для просмотра/улучшения');
@@ -499,6 +674,36 @@ class Game {
         
         // Размещение башни
         if (playerState.selectedTowerType) {
+            // Проверяем, есть ли уже башня на этой ячейке
+            const hex = this.hexGrid.arrayToHex(arrHex.x, arrHex.y);
+            const existingTower = this.towerBloc.getTowerAt(hex);
+            
+            // Если клик на свою башню - выбираем её для улучшения
+            if (existingTower && existingTower.playerId === currentPlayer) {
+                console.log('Выбрана башня для улучшения');
+                this.playerBloc.clearSelection();
+                this.playerBloc.selectCell(arrHex);
+                return;
+            }
+            
+            // Если клик на пустую ячейку, которая не подходит для размещения - отменяем выбор
+            if (!existingTower) {
+                // Проверяем, можно ли поставить башню здесь
+                const isOnBase = arrHex.x === 0 || arrHex.x === this.hexGrid.width - 1;
+                if (isOnBase) {
+                    console.log('Нельзя ставить башни на базе - отмена выбора');
+                    this.playerBloc.clearSelection();
+                    return;
+                }
+            }
+            
+            // Проверка препятствий
+            const obstacle = this.obstacleBloc.getObstacleAt(arrHex.x, arrHex.y);
+            if (obstacle) {
+                console.log('Нельзя ставить башню на препятствии');
+                return;
+            }
+            
             console.log('ПОПЫТКА РАЗМЕСТИТЬ БАШНЮ:', {
                 type: playerState.selectedTowerType,
                 position: arrHex,
@@ -526,6 +731,7 @@ class Game {
                             (currentPlayer === 2 && arrHex.x === this.hexGrid.width - 1);
             
             if (isOnBase) {
+                // Передаем array координаты напрямую
                 const success = this.soldierBloc.createSoldier(arrHex, currentPlayer, playerState.selectedSoldierType);
                 if (success) {
                     this.playerBloc.clearSelection();
@@ -562,13 +768,73 @@ class Game {
         requestAnimationFrame((time) => this.gameLoop(time));
     }
 
+    updateMousePosition(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const container = document.getElementById('game-board-container');
+        
+        // Координаты относительно видимой части канваса
+        const visibleX = e.clientX - rect.left;
+        const visibleY = e.clientY - rect.top;
+        
+        // Используем виртуальный скролл из Renderer
+        const scrollX = this.renderer.scrollX;
+        const scrollY = this.renderer.scrollY;
+        
+        // Координаты относительно всего поля (с учётом скролла)
+        const fieldX = visibleX + scrollX;
+        const fieldY = visibleY + scrollY;
+        
+        // Вычисляем offset
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.renderer.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        
+        // Координаты относительно сетки
+        const gridX = fieldX - offsetX;
+        const gridY = fieldY - offsetY;
+        
+        // Сохраняем позицию
+        this.mousePosition = {
+            fieldX: fieldX,
+            fieldY: fieldY,
+            gridX: gridX,
+            gridY: gridY,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            rectLeft: rect.left,
+            rectTop: rect.top,
+            scrollX: scrollX,
+            scrollY: scrollY,
+            visibleX: visibleX,
+            visibleY: visibleY
+        };
+        
+        // Добавляем в историю
+        this.mouseHistory.push({
+            x: gridX,
+            y: gridY,
+            time: Date.now()
+        });
+        
+        // Ограничиваем длину истории
+        if (this.mouseHistory.length > this.maxHistoryLength) {
+            this.mouseHistory.shift();
+        }
+        
+        // Удаляем старые точки (старше 2 секунд)
+        const now = Date.now();
+        this.mouseHistory = this.mouseHistory.filter(point => now - point.time < 2000);
+    }
+
     render() {
         const gameState = this.gameBloc.getState();
         const towerState = this.towerBloc.getState();
         const soldierState = this.soldierBloc.getState();
         const playerState = this.playerBloc.getState();
+        const obstacleState = this.obstacleBloc.getState();
         
-        this.renderer.render(gameState, towerState, soldierState, playerState);
+        this.renderer.render(gameState, towerState, soldierState, playerState, this.mousePosition, this.mouseHistory, obstacleState);
     }
 }
 
@@ -597,3 +863,4 @@ function initGame() {
         alert('Ошибка загрузки игры. Проверьте консоль браузера (F12). Ошибка: ' + error.message);
     }
 }
+

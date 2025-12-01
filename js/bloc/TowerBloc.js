@@ -19,7 +19,12 @@ export class TowerBloc {
         this.listeners.forEach(listener => listener(this.state));
     }
 
-    createTower(hex, playerId, type) {
+    createTower(pos, playerId, type) {
+        // pos может быть array координатами {x, y} или hex координатами {q, r, s}
+        // Преобразуем в array координаты если нужно
+        const arrPos = pos.x !== undefined && pos.y !== undefined ? pos : 
+                      { x: pos.q, y: pos.r + Math.floor(pos.q / 2) };
+        
         const gameState = this.gameBloc.getState();
         const player = gameState.players[playerId];
         
@@ -31,20 +36,20 @@ export class TowerBloc {
 
         // Не ставим башни на базах (первый и последний столбец)
         // Ширина поля - 15, значит индексы 0-14
-        if (hex.x === 0 || hex.x === 14) {
-            console.log('Нельзя ставить башни на базе. x =', hex.x);
+        if (arrPos.x === 0 || arrPos.x === 14) {
+            console.log('Нельзя ставить башни на базе. x =', arrPos.x);
             return false;
         }
         
         // Проверка границ поля
-        if (hex.x < 1 || hex.x >= 14 || hex.y < 0 || hex.y >= 45) {
-            console.log('Башня вне границ поля. x =', hex.x, 'y =', hex.y);
+        if (arrPos.x < 1 || arrPos.x >= 14 || arrPos.y < 0 || arrPos.y >= 45) {
+            console.log('Башня вне границ поля. x =', arrPos.x, 'y =', arrPos.y);
             return false;
         }
 
-        // Проверка, не занята ли клетка
+        // Проверка, не занята ли клетка башней
         const existingTower = this.state.towers.find(t => 
-            t.x === hex.x && t.y === hex.y
+            t.x === arrPos.x && t.y === arrPos.y
         );
         if (existingTower) {
             console.log('Клетка уже занята башней');
@@ -54,8 +59,8 @@ export class TowerBloc {
         const tower = {
             id: this.towerIdCounter++,
             playerId,
-            x: hex.x,
-            y: hex.y,
+            x: arrPos.x,
+            y: arrPos.y,
             type,
             level: 1,
             damage: towerConfig.damage,
@@ -99,7 +104,9 @@ export class TowerBloc {
     }
 
     getTowerAt(hex) {
-        return this.state.towers.find(t => t.x === hex.x && t.y === hex.y);
+        // Конвертируем hex координаты в array координаты для сравнения
+        const arr = { x: hex.q, y: hex.r + Math.floor(hex.q / 2) };
+        return this.state.towers.find(t => t.x === arr.x && t.y === arr.y);
     }
 
     getState() {

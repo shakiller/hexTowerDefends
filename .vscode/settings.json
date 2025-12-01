@@ -5,6 +5,13 @@
     "liveServer.settings.donotShowInfoMsg": true,
     "files.associations": {
         "*.html": "html"
-    }
+    },
+    // Настройки для автоматического запуска
+    "liveServer.settings.file": "index.html",
+    "liveServer.settings.openBrowserOnStartup": true,
+    "liveServer.settings.ignoreFiles": [
+        ".vscode/**",
+        "**/*.md",
+        "test-*.html"
+    ]
 }
-

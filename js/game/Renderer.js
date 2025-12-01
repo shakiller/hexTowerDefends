@@ -5,6 +5,11 @@ export class Renderer {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.hexGrid = hexGrid;
+        
+        // Виртуальный скролл внутри канваса
+        this.scrollX = 0;
+        this.scrollY = 0;
+        
         this.setupCanvas();
     }
 
@@ -57,18 +62,22 @@ export class Renderer {
         const canvasWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
         const canvasHeight = this.hexGrid.height * this.hexGrid.hexSize * 1.5 * verticalMultiplier + this.hexGrid.hexSize;
         
-        // Устанавливаем реальные размеры канваса - делаем его достаточно большим
-        // Убеждаемся что поле 15x45 помещается полностью без обрезки
-        // Используем рассчитанную ширину, но не меньше минимума
-        // Убеждаемся что канвас достаточно широкий - не ограничиваем
-        this.canvas.width = Math.max(canvasWidth, 1600); // Минимум 1600 пикселей ширины для поля 15 столбцов
-        this.canvas.height = Math.max(canvasHeight, 1300); // Минимум 1300 пикселей высоты для поля 45 рядов
+        // Канвас должен быть размером видимой области (контейнера)
+        // Вся сетка будет отрисовываться через виртуальный скролл
+        this.canvas.width = maxWidth;
+        this.canvas.height = maxHeight;
+        
+        // Сохраняем реальные размеры поля для ограничения скролла
+        this.fieldWidth = Math.max(canvasWidth, 1600);
+        this.fieldHeight = Math.max(canvasHeight, 1300);
         
         console.log('Canvas setup:', {
             hexSize: this.hexGrid.hexSize,
             hexWidth: this.hexGrid.hexWidth,
             canvasWidth: this.canvas.width,
             canvasHeight: this.canvas.height,
+            fieldWidth: this.fieldWidth,
+            fieldHeight: this.fieldHeight,
             calculatedWidth: canvasWidth,
             calculatedHeight: canvasHeight,
             maxWidth,
@@ -85,11 +94,14 @@ export class Renderer {
     drawGrid() {
         this.ctx.save();
         
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
         // Центрируем сетку на канвасе
         // Используем те же множители что и в hexToPixel
         const horizontalMultiplier = 0.87;
         const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
-        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -111,10 +123,13 @@ export class Renderer {
     drawTowers(towers) {
         this.ctx.save();
         
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
         // Используем те же множители что и в hexToPixel
         const horizontalMultiplier = 0.87;
         const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
-        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -146,10 +161,13 @@ export class Renderer {
     drawSoldiers(soldiers) {
         this.ctx.save();
         
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
         // Используем те же множители что и в hexToPixel
         const horizontalMultiplier = 0.87;
         const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
-        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -187,10 +205,13 @@ export class Renderer {
         
         this.ctx.save();
         
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
         // Используем те же множители что и в hexToPixel
         const horizontalMultiplier = 0.87;
         const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
-        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -204,10 +225,13 @@ export class Renderer {
     drawBases() {
         this.ctx.save();
         
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
         // Используем те же множители что и в hexToPixel
         const horizontalMultiplier = 0.87;
         const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
-        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -228,14 +252,91 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    render(gameState, towerState, soldierState, playerState) {
+    drawObstacles(obstacles) {
+        this.ctx.save();
+        
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        obstacles.forEach(obstacle => {
+            const hex = this.hexGrid.arrayToHex(obstacle.x, obstacle.y);
+            const pixelPos = this.hexGrid.hexToPixel(hex);
+            
+            if (obstacle.type === 'stone') {
+                // Камень - серый прямоугольник
+                const size = this.hexGrid.hexSize * 0.7;
+                this.ctx.fillStyle = '#555555';
+                this.ctx.strokeStyle = '#333333';
+                this.ctx.lineWidth = 2;
+                this.ctx.fillRect(
+                    pixelPos.x - size / 2,
+                    pixelPos.y - size / 2,
+                    size,
+                    size
+                );
+                this.ctx.strokeRect(
+                    pixelPos.x - size / 2,
+                    pixelPos.y - size / 2,
+                    size,
+                    size
+                );
+            } else if (obstacle.type === 'tree') {
+                // Дерево - коричневый ствол с зеленой кроной
+                const trunkWidth = this.hexGrid.hexSize * 0.3;
+                const trunkHeight = this.hexGrid.hexSize * 0.4;
+                const crownSize = this.hexGrid.hexSize * 0.6;
+                
+                // Ствол
+                this.ctx.fillStyle = '#654321';
+                this.ctx.fillRect(
+                    pixelPos.x - trunkWidth / 2,
+                    pixelPos.y + crownSize / 2,
+                    trunkWidth,
+                    trunkHeight
+                );
+                
+                // Крона
+                this.ctx.fillStyle = '#228B22';
+                this.ctx.beginPath();
+                this.ctx.arc(pixelPos.x, pixelPos.y, crownSize / 2, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Показываем здоровье дерева
+                if (obstacle.health < 100) {
+                    this.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                    this.ctx.fillRect(
+                        pixelPos.x - crownSize / 2,
+                        pixelPos.y - crownSize / 2 - 5,
+                        crownSize * (obstacle.health / 100),
+                        3
+                    );
+                }
+            }
+        });
+        
+        this.ctx.restore();
+    }
+
+    render(gameState, towerState, soldierState, playerState, mousePosition = null, mouseHistory = [], obstacleState = null) {
         this.clear();
         this.drawGrid();
         this.drawBases();
         
+        // Рисуем препятствия перед башнями и солдатами
+        if (obstacleState && obstacleState.obstacles) {
+            this.drawObstacles(obstacleState.obstacles);
+        }
+        
         // Подсветка доступных ячеек для размещения
         if (playerState.selectedTowerType || playerState.selectedSoldierType) {
-            this.drawPlacementPreview(gameState, playerState, towerState);
+            this.drawPlacementPreview(gameState, playerState, towerState, obstacleState);
         }
         
         this.drawTowers(towerState.towers);
@@ -244,14 +345,22 @@ export class Renderer {
         if (playerState.selectedCell) {
             this.drawSelection(playerState.selectedCell, 'yellow');
         }
+        
+        // Визуализация позиции мыши для отладки
+        if (mousePosition || mouseHistory.length > 0) {
+            this.drawMouseDebug(mousePosition, mouseHistory);
+        }
     }
 
-    drawPlacementPreview(gameState, playerState, towerState) {
+    drawPlacementPreview(gameState, playerState, towerState, obstacleState = null) {
         this.ctx.save();
+        
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
         
         const horizontalMultiplier = 0.87;
         const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
-        const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
@@ -270,6 +379,11 @@ export class Renderer {
                     
                     // Не ставим башни на базах (первый и последний столбец)
                     if (x === 0 || x === this.hexGrid.width - 1) continue;
+                    
+                    // Проверка препятствий
+                    const obstacle = obstacleState && obstacleState.obstacles ? 
+                        obstacleState.obstacles.find(o => o.x === x && o.y === y) : null;
+                    if (obstacle) continue; // Пропускаем ячейки с препятствиями
                     
                     if (!existingTower && player.gold >= towerCost) {
                         // Желтая подсветка для доступных ячеек
@@ -298,6 +412,111 @@ export class Renderer {
         }
         
         this.ctx.restore();
+    }
+
+    drawMouseDebug(mousePosition, mouseHistory) {
+        this.ctx.save();
+        
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        // Применяем тот же offset что и для сетки
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        // Рисуем шлейф - историю позиций
+        if (mouseHistory.length > 1) {
+            this.ctx.strokeStyle = 'rgba(255, 0, 255, 0.5)';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            
+            for (let i = 0; i < mouseHistory.length; i++) {
+                const point = mouseHistory[i];
+                const age = Date.now() - point.time;
+                const alpha = 1 - (age / 2000); // Исчезает за 2 секунды
+                
+                if (alpha > 0) {
+                    const x = point.x;
+                    const y = point.y;
+                    
+                    if (i === 0) {
+                        this.ctx.moveTo(x, y);
+                    } else {
+                        this.ctx.lineTo(x, y);
+                    }
+                }
+            }
+            
+            this.ctx.stroke();
+            
+            // Рисуем точки шлейфа
+            for (let i = 0; i < mouseHistory.length; i++) {
+                const point = mouseHistory[i];
+                const age = Date.now() - point.time;
+                const alpha = Math.max(0, 1 - (age / 2000));
+                
+                if (alpha > 0) {
+                    this.ctx.fillStyle = `rgba(255, 0, 255, ${alpha * 0.7})`;
+                    this.ctx.beginPath();
+                    this.ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+            }
+        }
+        
+        // Рисуем текущую позицию мыши
+        if (mousePosition) {
+            // Большой круг в текущей позиции
+            this.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            this.ctx.strokeStyle = 'red';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc(mousePosition.gridX, mousePosition.gridY, 8, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.stroke();
+            
+            // Крестик
+            this.ctx.strokeStyle = 'red';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.moveTo(mousePosition.gridX - 12, mousePosition.gridY);
+            this.ctx.lineTo(mousePosition.gridX + 12, mousePosition.gridY);
+            this.ctx.moveTo(mousePosition.gridX, mousePosition.gridY - 12);
+            this.ctx.lineTo(mousePosition.gridX, mousePosition.gridY + 12);
+            this.ctx.stroke();
+        }
+        
+        this.ctx.restore();
+        
+        // Рисуем информацию о координатах в углу экрана (без трансформации)
+        if (mousePosition) {
+            this.ctx.save();
+            this.ctx.font = '14px monospace';
+            this.ctx.fillStyle = 'white';
+            this.ctx.strokeStyle = 'black';
+            this.ctx.lineWidth = 3;
+            
+            const info = [
+                `Client: (${(mousePosition.clientX || 0).toFixed(0)}, ${(mousePosition.clientY || 0).toFixed(0)})`,
+                `Rect: (${(mousePosition.rectLeft || 0).toFixed(1)}, ${(mousePosition.rectTop || 0).toFixed(1)})`,
+                `Visible: (${(mousePosition.visibleX || 0).toFixed(1)}, ${(mousePosition.visibleY || 0).toFixed(1)})`,
+                `Scroll: (${(mousePosition.scrollX || 0).toFixed(0)}, ${(mousePosition.scrollY || 0).toFixed(0)})`,
+                `Canvas: (${(mousePosition.fieldX || mousePosition.canvasX || 0).toFixed(1)}, ${(mousePosition.fieldY || mousePosition.canvasY || 0).toFixed(1)})`,
+                `Grid: (${(mousePosition.gridX || 0).toFixed(1)}, ${(mousePosition.gridY || 0).toFixed(1)})`
+            ];
+            
+            let y = 20;
+            for (const line of info) {
+                this.ctx.strokeText(line, 10, y);
+                this.ctx.fillText(line, 10, y);
+                y += 18;
+            }
+            
+            this.ctx.restore();
+        }
     }
 
 }

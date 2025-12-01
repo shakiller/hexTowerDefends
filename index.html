@@ -66,10 +66,23 @@
                     <div id="selected-soldier-info" class="info-panel"></div>
                 </div>
 
+                <div id="obstacle-panel" class="panel-section">
+                    <h4>Препятствия</h4>
+                    <div class="tower-options">
+                        <button class="obstacle-btn" data-type="stone" data-cost="0">
+                            Камень (бесплатно)
+                        </button>
+                        <button class="obstacle-btn" data-type="tree" data-cost="0">
+                            Дерево (бесплатно)
+                        </button>
+                    </div>
+                </div>
+
                 <div id="upgrade-panel" class="panel-section">
                     <h4>Улучшения</h4>
                     <button id="btn-upgrade-tower" class="upgrade-btn" disabled>Улучшить башню</button>
                     <button id="btn-upgrade-soldier" class="upgrade-btn" disabled>Улучшить солдата</button>
+                    <button id="btn-cancel-selection" class="upgrade-btn" style="background: #666; margin-top: 5px; display: none;">Отменить выбор</button>
                 </div>
             </div>
         </div>
@@ -111,13 +124,31 @@
         });
         
         // Обработка необработанных Promise rejections
+        // Более агрессивная обработка ошибок расширений
         window.addEventListener('unhandledrejection', (e) => {
-            if (e.reason && e.reason.message && e.reason.message.includes('message channel closed')) {
-                console.warn('Promise rejection от расширения (не критично):', e.reason.message);
+            const reason = e.reason || {};
+            const message = reason.message || reason.toString() || '';
+            
+            // Перехватываем все ошибки связанные с message channel
+            if (message.includes('message channel') || 
+                message.includes('channel closed') ||
+                message.includes('listener indicated')) {
+                console.warn('Ошибка расширения браузера (игнорируется):', message);
                 e.preventDefault(); // Предотвращаем вывод ошибки
-                return;
+                return true;
             }
         });
+        
+        // Также перехватываем синхронные ошибки
+        window.addEventListener('error', (e) => {
+            const message = e.message || '';
+            if (message.includes('message channel') || 
+                message.includes('channel closed')) {
+                console.warn('Ошибка расширения браузера (игнорируется):', message);
+                e.preventDefault();
+                return true;
+            }
+        }, true);
         
         console.log('Обработка ошибок расширений настроена');
         
@@ -140,6 +171,6 @@
             console.log('Глобальный обработчик кликов установлен');
         }, 100);
     </script>
-    <script type="module" src="js/main.js?v=28"></script>
+    <script type="module" src="js/main.js?v=37"></script>
 </body>
 </html>

@@ -9,11 +9,22 @@ export class HexGrid {
 
     pixelToHex(x, y) {
         // Обратное преобразование для pointy-top с offset координатами
-        // Сначала находим приблизительную колонку и строку
-        const col = Math.round(x / (this.hexSize * Math.sqrt(3)));
-        const row = Math.round(y / (this.hexSize * 1.5));
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const verticalMultiplier = 1.17;
+        const offsetMultiplier = 0.87;
         
-        // Конвертируем обратно в кубические координаты
+        // Обратное преобразование:
+        // x = hexSize * sqrt(3) * col * horizontalMultiplier
+        // col = x / (hexSize * sqrt(3) * horizontalMultiplier)
+        const col = Math.round(x / (this.hexSize * Math.sqrt(3) * horizontalMultiplier));
+        
+        // y = hexSize * 1.5 * row * verticalMultiplier + ((col + 1) % 2) * hexSize * offsetMultiplier
+        // Сначала вычитаем offset для нечётных столбцов
+        const offsetY = y - ((col + 1) % 2) * this.hexSize * offsetMultiplier;
+        const row = Math.round(offsetY / (this.hexSize * 1.5 * verticalMultiplier));
+        
+        // Конвертируем обратно в кубические координаты (odd-r offset)
         const q = col;
         const r = row - Math.floor(col / 2);
         return this.hexRound({q, r, s: -q - r});

@@ -4,6 +4,7 @@ export class PlayerBloc {
         this.state = {
             selectedTowerType: null,
             selectedSoldierType: null,
+            selectedObstacleType: null, // 'stone' или 'tree'
             selectedCell: null
         };
         this.listeners = [];
@@ -39,9 +40,17 @@ export class PlayerBloc {
         this.emit();
     }
 
+    selectObstacleType(type) {
+        this.state.selectedObstacleType = type;
+        this.state.selectedTowerType = null;
+        this.state.selectedSoldierType = null;
+        this.emit();
+    }
+
     clearSelection() {
         this.state.selectedTowerType = null;
         this.state.selectedSoldierType = null;
+        this.state.selectedObstacleType = null;
         this.state.selectedCell = null;
         this.emit();
     }
