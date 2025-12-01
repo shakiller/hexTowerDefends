@@ -38,22 +38,28 @@ export class Renderer {
         const hexHorizontalSpacing = Math.sqrt(3) * horizontalMultiplier; // Относительное горизонтальное расстояние
         const hexVerticalSpacing = 1.5 * verticalMultiplier; // Относительное вертикальное расстояние
         
-        const sizeByWidth = maxWidth / (this.hexGrid.width * hexHorizontalSpacing);
+        // Рассчитываем размер гексагона на основе высоты (приоритет вертикали)
+        // По ширине делаем больше, чтобы было место для прокрутки
         const sizeByHeight = maxHeight / (this.hexGrid.height * hexVerticalSpacing);
         
-        const optimalHexSize = Math.min(sizeByWidth, sizeByHeight) * 0.9;
-        this.hexGrid.hexSize = Math.max(optimalHexSize, 12); // Минимум 12 пикселей
+        // Минимальный размер для хорошей видимости
+        // Делаем больше, чтобы поле было шире - не ограничиваем размером контейнера
+        // Используем фиксированный размер для лучшей видимости
+        const optimalHexSize = Math.max(sizeByHeight * 0.95, 18); // Минимум 18 пикселей для широкого поля
+        this.hexGrid.hexSize = optimalHexSize;
         
         this.hexGrid.hexHeight = this.hexGrid.hexSize * 2;
         this.hexGrid.hexWidth = Math.sqrt(3) * this.hexGrid.hexSize;
         
         // Размеры канваса для всей сетки с учетом множителей
+        // Не ограничиваем по ширине - будет прокрутка
         const canvasWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
         const canvasHeight = this.hexGrid.height * this.hexGrid.hexSize * 1.5 * verticalMultiplier + this.hexGrid.hexSize;
         
-        // Используем максимальное пространство
-        this.canvas.width = Math.min(canvasWidth, maxWidth);
-        this.canvas.height = Math.min(canvasHeight, maxHeight);
+        // Устанавливаем реальные размеры канваса - делаем его достаточно большим
+        // Убеждаемся что поле 15x45 помещается полностью без обрезки
+        this.canvas.width = Math.max(canvasWidth, 1200); // Минимум 1200 пикселей ширины для поля 15 столбцов
+        this.canvas.height = Math.max(canvasHeight, 1000); // Минимум 1000 пикселей высоты для поля 45 рядов
         
         console.log('Canvas setup:', {
             hexSize: this.hexGrid.hexSize,

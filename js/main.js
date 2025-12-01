@@ -23,6 +23,7 @@ class Game {
         
         this.setupEventListeners();
         this.setupBLoCSubscriptions();
+        this.setupDragToScroll();
         
         // Обработка изменения размера окна
         window.addEventListener('resize', () => {
@@ -31,6 +32,80 @@ class Game {
                 this.render();
             }
         });
+    }
+
+    setupDragToScroll() {
+        const container = document.getElementById('game-board-container');
+        let isDragging = false;
+        let startX, startY;
+        let scrollLeft, scrollTop;
+        let dragDistance = 0;
+        let wasDrag = false;
+
+        // Обработка на контейнере
+        container.addEventListener('mousedown', (e) => {
+            if (e.target === this.canvas) {
+                isDragging = false;
+                wasDrag = false;
+                dragDistance = 0;
+                startX = e.clientX;
+                startY = e.clientY;
+                scrollLeft = container.scrollLeft;
+                scrollTop = container.scrollTop;
+            }
+        });
+
+        container.addEventListener('mousemove', (e) => {
+            if (e.target === this.canvas || e.target === container) {
+                if (!isDragging && (startX !== undefined || startY !== undefined)) {
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+                    dragDistance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Если перемещение больше 3 пикселей, начинаем перетаскивание
+                    if (dragDistance > 3) {
+                        isDragging = true;
+                        wasDrag = true;
+                        container.style.cursor = 'grabbing';
+                    }
+                }
+                
+                if (isDragging) {
+                    e.preventDefault();
+                    const walkX = (e.clientX - startX);
+                    const walkY = (e.clientY - startY);
+                    container.scrollLeft = scrollLeft - walkX;
+                    container.scrollTop = scrollTop - walkY;
+                }
+            }
+        });
+
+        container.addEventListener('mouseup', () => {
+            if (wasDrag) {
+                // Предотвращаем клик после перетаскивания
+                setTimeout(() => {
+                    wasDrag = false;
+                }, 50);
+            }
+            isDragging = false;
+            container.style.cursor = 'grab';
+            startX = undefined;
+            startY = undefined;
+        });
+
+        container.addEventListener('mouseleave', () => {
+            isDragging = false;
+            container.style.cursor = 'grab';
+            wasDrag = false;
+        });
+
+        // Отменяем клик на канвасе если было перетаскивание
+        this.canvas.addEventListener('click', (e) => {
+            if (wasDrag) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }, true);
     }
 
     setupEventListeners() {
@@ -262,15 +337,18 @@ class Game {
     handleCanvasClick(e) {
         const gameState = this.gameBloc.getState();
         if (gameState.gameState !== 'playing') return;
-        if ((gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') && gameState.currentPlayer === 2) return; // Бот играет автоматически
+        if ((gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') && gameState.currentPlayer === 2) return;
         
         const rect = this.canvas.getBoundingClientRect();
+        const container = document.getElementById('game-board-container');
         const horizontalMultiplier = 0.87;
         const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
         const offsetX = Math.max(0, (this.canvas.width - totalWidth) / 2);
         const offsetY = this.hexGrid.hexSize;
-        const x = e.clientX - rect.left - offsetX;
-        const y = e.clientY - rect.top - offsetY;
+        
+        // Учитываем скролл контейнера при расчете координат
+        const x = (e.clientX - rect.left) + container.scrollLeft - offsetX;
+        const y = (e.clientY - rect.top) + container.scrollTop - offsetY;
         
         const hex = this.hexGrid.pixelToHex(x, y);
         if (!this.hexGrid.isValidHex(hex)) return;

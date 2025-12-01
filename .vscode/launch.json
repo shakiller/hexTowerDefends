@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Game Server",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/server.js",
+            "console": "integratedTerminal",
+            "preLaunchTask": null
+        },
+        {
+            "name": "Launch with Python Server",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/server.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
+
