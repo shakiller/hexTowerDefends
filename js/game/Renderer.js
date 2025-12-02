@@ -24,12 +24,8 @@ export class Renderer {
         if (maxWidth < 300 || maxHeight < 300 || !maxWidth || !maxHeight || isNaN(maxWidth) || isNaN(maxHeight)) {
             maxWidth = Math.max(window.innerWidth - 100, 1000);
             maxHeight = Math.max(window.innerHeight - 250, 700);
-            console.warn('Container too small or not initialized, using window dimensions:', { 
-                maxWidth, 
-                maxHeight,
-                containerWidth: container.clientWidth,
-                containerHeight: container.clientHeight
-            });
+            // Это нормальная ситуация - контейнер может быть скрыт при инициализации
+            // Используем размеры окна как запасной вариант (без предупреждения)
         }
         
         // Вычисляем оптимальный размер гексагона для поля 15x45
@@ -414,6 +410,44 @@ export class Renderer {
         this.ctx.restore();
     }
 
+    drawTestNeighbors(selectedHex) {
+        if (!selectedHex) return;
+        
+        this.ctx.save();
+        
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        // Применяем тот же offset что и для сетки
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        // Нормализуем выбранный hex
+        const normalizedHex = this.hexGrid.hexRound(selectedHex);
+        
+        // Проверяем валидность
+        if (!this.hexGrid.isValidHex(normalizedHex)) {
+            this.ctx.restore();
+            return;
+        }
+        
+        // Подсветка выбранной ячейки (красным) - более яркая
+        this.hexGrid.drawHex(this.ctx, normalizedHex, 'rgba(255, 0, 0, 0.5)', 'rgba(255, 0, 0, 1.0)');
+        
+        // Получаем соседей
+        const neighbors = this.hexGrid.getHexNeighbors(normalizedHex);
+        
+        // Подсветка соседей (зелёным) - более яркая
+        neighbors.forEach((neighbor, index) => {
+            this.hexGrid.drawHex(this.ctx, neighbor, 'rgba(0, 255, 0, 0.5)', 'rgba(0, 255, 0, 1.0)');
+        });
+        
+        this.ctx.restore();
+    }
+
     render(gameState, towerState, soldierState, playerState, mousePosition = null, obstacleState = null) {
         this.clear();
         this.drawGrid();
@@ -440,6 +474,11 @@ export class Renderer {
         // Подсветка ячейки под курсором мыши
         if (mousePosition && mousePosition.hex) {
             this.drawHoverCell(mousePosition.hex);
+        }
+        
+        // Тестовый режим: подсветка соседей
+        if (playerState.testNeighborsMode && playerState.testSelectedHex) {
+            this.drawTestNeighbors(playerState.testSelectedHex);
         }
     }
 

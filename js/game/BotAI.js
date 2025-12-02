@@ -1,9 +1,10 @@
 export class BotAI {
-    constructor(gameBloc, towerBloc, soldierBloc, hexGrid) {
+    constructor(gameBloc, towerBloc, soldierBloc, hexGrid, obstacleBloc = null) {
         this.gameBloc = gameBloc;
         this.towerBloc = towerBloc;
         this.soldierBloc = soldierBloc;
         this.hexGrid = hexGrid;
+        this.obstacleBloc = obstacleBloc;
         this.lastActionTime = 0;
         this.actionInterval = 2000; // Действие каждые 2 секунды
     }
@@ -39,7 +40,8 @@ export class BotAI {
             const gateX = centerX; // Игрок 2 использует центр
             const gateY = 0; // Игрок 2: верхняя строка (ворота)
             const gatePos = {x: gateX, y: gateY};
-            this.soldierBloc.createSoldier(gatePos, 2, 'basic');
+            // Передаём obstacleBloc и towerBloc для проверки пути
+            this.soldierBloc.createSoldier(gatePos, 2, 'basic', this.obstacleBloc, this.towerBloc);
         } else if (action < 0.7 && player.gold >= 100) {
             // Построить башню (ближе к своей базе)
             const x = Math.floor(Math.random() * 10) + (this.hexGrid.width - 15);

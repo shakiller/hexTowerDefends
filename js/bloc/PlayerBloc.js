@@ -5,7 +5,9 @@ export class PlayerBloc {
             selectedTowerType: null,
             selectedSoldierType: null,
             selectedObstacleType: null, // 'stone' или 'tree'
-            selectedCell: null
+            selectedCell: null,
+            testNeighborsMode: false, // Режим тестирования соседей
+            testSelectedHex: null // Выбранный hex для тестирования
         };
         this.listeners = [];
     }
@@ -52,6 +54,19 @@ export class PlayerBloc {
         this.state.selectedSoldierType = null;
         this.state.selectedObstacleType = null;
         this.state.selectedCell = null;
+        this.emit();
+    }
+
+    toggleTestNeighborsMode() {
+        this.state.testNeighborsMode = !this.state.testNeighborsMode;
+        if (!this.state.testNeighborsMode) {
+            this.state.testSelectedHex = null;
+        }
+        this.emit();
+    }
+
+    setTestSelectedHex(hex) {
+        this.state.testSelectedHex = hex;
         this.emit();
     }
 

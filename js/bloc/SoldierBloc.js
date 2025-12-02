@@ -18,10 +18,11 @@ export class SoldierBloc {
     }
 
     emit() {
+        console.log(`SoldierBloc.emit() вызван. Слушателей: ${this.listeners.length}, Солдат в массиве: ${this.state.soldiers.length}`);
         this.listeners.forEach(listener => listener(this.state));
     }
 
-    createSoldier(startPos, playerId, type) {
+    createSoldier(startPos, playerId, type, obstacleBloc = null, towerBloc = null) {
         // startPos может быть array координатами {x, y} или hex координатами {q, r, s}
         // Преобразуем в array координаты если нужно
         const arrPos = startPos.x !== undefined && startPos.y !== undefined ? startPos : 
@@ -31,8 +32,18 @@ export class SoldierBloc {
         const player = gameState.players[playerId];
         
         const soldierConfig = this.getSoldierConfig(type);
+        console.log('=== createSoldier вызван ===', {
+            startPos,
+            playerId,
+            type,
+            playerGold: player.gold,
+            soldierCost: soldierConfig.cost,
+            hasObstacleBloc: !!obstacleBloc,
+            hasTowerBloc: !!towerBloc
+        });
+        
         if (player.gold < soldierConfig.cost) {
-            console.log('Недостаточно золота для солдата. Нужно:', soldierConfig.cost, 'Есть:', player.gold);
+            console.log('❌ Недостаточно золота для солдата. Нужно:', soldierConfig.cost, 'Есть:', player.gold);
             return false;
         }
 
@@ -41,6 +52,9 @@ export class SoldierBloc {
         // Для игрока 1 ворота на последней строке, на чётной позиции (считая с 1): индекс 7 → столбец 8
         const targetX = centerX; // Центр (индекс 7 → столбец 8, чётный с 1)
         const targetY = playerId === 1 ? 0 : this.hexGrid.height - 1; // Игрок 1 идёт к верху, игрок 2 к последней строке
+
+        // Примечание: проверка пути выполняется в updateSoldiers
+        // Здесь просто создаём солдата, путь будет вычислен позже
 
         const soldier = {
             id: this.soldierIdCounter++,
@@ -62,8 +76,18 @@ export class SoldierBloc {
         };
 
         this.state.soldiers.push(soldier);
+        console.log('✅ Солдат добавлен в массив. Всего солдат:', this.state.soldiers.length);
         this.gameBloc.updatePlayerGold(playerId, -soldierConfig.cost);
+        console.log('✅ Солдат создан успешно:', {
+            id: soldier.id,
+            playerId: soldier.playerId,
+            type: soldier.type,
+            startPos: { x: soldier.startX, y: soldier.startY },
+            targetPos: { x: soldier.targetX, y: soldier.targetY },
+            soldiersInArray: this.state.soldiers.length
+        });
         this.emit();
+        console.log('✅ emit() вызван для SoldierBloc');
         return true;
     }
 
@@ -113,24 +137,59 @@ export class SoldierBloc {
     }
 
     updateSoldiers(deltaTime, towerBloc, obstacleBloc = null) {
+        console.log(`=== updateSoldiers ВЫЗВАН ===`, {
+            soldiersCount: this.state.soldiers.length,
+            deltaTime,
+            hasTowerBloc: !!towerBloc,
+            hasObstacleBloc: !!obstacleBloc
+        });
+        
         const soldiersToRemove = [];
         
         // Ограничиваем deltaTime, чтобы избежать больших скачков при первом кадре
         const normalizedDeltaTime = Math.min(deltaTime, 100); // Максимум 100мс за кадр
         
+        // Отладка: логируем количество солдат перед обновлением
+        if (this.state.soldiers.length > 0) {
+            console.log(`=== updateSoldiers: обрабатываем ${this.state.soldiers.length} солдат ===`);
+        } else {
+            console.log(`=== updateSoldiers: солдат нет ===`);
+        }
+        
         this.state.soldiers.forEach(soldier => {
             // Если путь ещё не вычислен, вычисляем его
             if (!soldier.path || soldier.path.length === 0) {
+                console.log(`Вычисляем путь для солдата ${soldier.id}`, {
+                    startPos: { x: soldier.startX, y: soldier.startY },
+                    targetPos: { x: soldier.targetX, y: soldier.targetY },
+                    hasObstacleBloc: !!obstacleBloc,
+                    hasTowerBloc: !!towerBloc
+                });
                 const startHex = this.hexGrid.arrayToHex(soldier.startX, soldier.startY);
                 const targetHex = this.hexGrid.arrayToHex(soldier.targetX, soldier.targetY);
                 soldier.path = this.hexGrid.findPath(startHex, targetHex, obstacleBloc, towerBloc);
+                console.log(`Путь для солдата ${soldier.id}:`, {
+                    pathLength: soldier.path ? soldier.path.length : 0,
+                    path: soldier.path ? soldier.path.map(h => `${h.q},${h.r}`).join(' -> ') : 'нет'
+                });
                 soldier.currentHexIndex = 0;
                 soldier.x = soldier.startX;
                 soldier.y = soldier.startY;
             }
             
-            // Если путь пустой, удаляем солдата (не можем найти путь)
+            // Если путь пустой после попытки вычисления, возвращаем деньги и удаляем солдата
             if (!soldier.path || soldier.path.length === 0) {
+                console.log(`❌ Солдат ${soldier.id} не может найти путь. Возвращаем деньги и удаляем.`, {
+                    soldierId: soldier.id,
+                    startPos: { x: soldier.startX, y: soldier.startY },
+                    targetPos: { x: soldier.targetX, y: soldier.targetY },
+                    hasObstacleBloc: !!obstacleBloc,
+                    hasTowerBloc: !!towerBloc,
+                    path: soldier.path
+                });
+                // Возвращаем деньги за солдата
+                const soldierConfig = this.getSoldierConfig(soldier.type);
+                this.gameBloc.updatePlayerGold(soldier.playerId, soldierConfig.cost);
                 soldiersToRemove.push(soldier.id);
                 return;
             }
@@ -186,9 +245,22 @@ export class SoldierBloc {
         });
         
         // Удаляем солдат, которые достигли цели или погибли
-        soldiersToRemove.forEach(id => this.removeSoldier(id));
-        
         if (soldiersToRemove.length > 0) {
+            console.log(`=== УДАЛЕНИЕ СОЛДАТ ===`);
+            console.log(`Количество солдат до удаления: ${this.state.soldiers.length}`);
+            console.log(`Удаляем ${soldiersToRemove.length} солдат:`, soldiersToRemove);
+            soldiersToRemove.forEach(id => {
+                const soldier = this.state.soldiers.find(s => s.id === id);
+                console.log(`Удаляем солдата ID=${id}:`, soldier ? {
+                    id: soldier.id,
+                    playerId: soldier.playerId,
+                    type: soldier.type,
+                    hasPath: !!soldier.path,
+                    pathLength: soldier.path ? soldier.path.length : 0
+                } : 'не найден');
+                this.removeSoldier(id);
+            });
+            console.log(`Количество солдат после удаления: ${this.state.soldiers.length}`);
             this.emit();
         }
     }

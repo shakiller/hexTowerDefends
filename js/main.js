@@ -23,7 +23,7 @@ class Game {
         
         this.canvas = document.getElementById('game-canvas');
         this.renderer = new Renderer(this.canvas, this.hexGrid);
-        this.botAI = new BotAI(this.gameBloc, this.towerBloc, this.soldierBloc, this.hexGrid);
+        this.botAI = new BotAI(this.gameBloc, this.towerBloc, this.soldierBloc, this.hexGrid, this.obstacleBloc);
         
         this.lastTime = 0;
         this.isRunning = false;
@@ -33,6 +33,10 @@ class Game {
         this.mousePosition = null;
         this.mouseHistory = []; // История позиций мыши для шлейфа
         this.maxHistoryLength = 50; // Максимальная длина истории
+        
+        // Отладка: последняя ошибка создания солдата
+        this.lastSoldierCreationError = null;
+        this.lastSoldierCreationAttempt = null;
         
         console.log('Вызов setupEventListeners...');
         this.setupEventListeners();
@@ -247,11 +251,81 @@ class Game {
             });
         });
         
+        // Тестовая кнопка соседей
+        const btnTestNeighbors = document.getElementById('btn-test-neighbors');
+        const btnCopyTestInfo = document.getElementById('btn-copy-test-info');
+        const testInfoEl = document.getElementById('test-neighbors-info');
+        
+        if (btnTestNeighbors) {
+            btnTestNeighbors.addEventListener('click', () => {
+                const playerState = this.playerBloc.getState();
+                this.playerBloc.toggleTestNeighborsMode();
+                const newState = this.playerBloc.getState();
+                btnTestNeighbors.textContent = newState.testNeighborsMode ? 'Выключить тест соседей' : 'Включить тест соседей';
+                btnTestNeighbors.style.background = newState.testNeighborsMode ? '#ff6b6b' : '#4a90e2';
+                if (btnCopyTestInfo) {
+                    btnCopyTestInfo.style.display = newState.testNeighborsMode ? 'block' : 'none';
+                }
+                if (!newState.testNeighborsMode && testInfoEl) {
+                    testInfoEl.textContent = '';
+                }
+            });
+        }
+        
+        // Кнопка копирования информации о соседях
+        if (btnCopyTestInfo && testInfoEl) {
+            btnCopyTestInfo.addEventListener('click', () => {
+                const text = testInfoEl.textContent || '';
+                if (text) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        btnCopyTestInfo.textContent = 'Скопировано!';
+                        setTimeout(() => {
+                            btnCopyTestInfo.textContent = 'Копировать информацию';
+                        }, 2000);
+                    }).catch(err => {
+                        console.error('Ошибка копирования:', err);
+                        // Fallback для старых браузеров
+                        const textarea = document.createElement('textarea');
+                        textarea.value = text;
+                        textarea.style.position = 'fixed';
+                        textarea.style.opacity = '0';
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        btnCopyTestInfo.textContent = 'Скопировано!';
+                        setTimeout(() => {
+                            btnCopyTestInfo.textContent = 'Копировать информацию';
+                        }, 2000);
+                    });
+                }
+            });
+        }
+
         // Панель солдат
-        document.querySelectorAll('.soldier-btn').forEach(btn => {
+        const soldierButtons = document.querySelectorAll('.soldier-btn');
+        console.log('=== НАЙДЕНО КНОПОК СОЛДАТ: ===', soldierButtons.length);
+        soldierButtons.forEach((btn, index) => {
+            console.log(`Регистрация обработчика для кнопки солдата ${index}:`, btn);
             btn.addEventListener('click', (e) => {
-                const type = e.target.dataset.type || e.target.closest('.soldier-btn')?.dataset.type;
-                if (!type) return;
+                console.log('🔴🔴🔴 КНОПКА СОЛДАТА НАЖАТА! 🔴🔴🔴', { 
+                    target: e.target, 
+                    currentTarget: e.currentTarget,
+                    button: btn 
+                });
+                e.stopPropagation();
+                
+                const type = e.target.dataset.type || e.target.closest('.soldier-btn')?.dataset.type || btn.dataset.type;
+                console.log('Тип солдата извлечен:', type);
+                if (!type) {
+                    console.log('=== СОЗДАНИЕ СОЛДАТА: тип не найден ===');
+                    this.lastSoldierCreationError = 'Тип солдата не найден';
+                    this.lastSoldierCreationAttempt = { type: null, timestamp: Date.now() };
+                    this.updateSoldierDebugInfo();
+                    return;
+                }
+                
+                console.log('=== НАЖАТИЕ КНОПКИ СОЗДАНИЯ СОЛДАТА ===', { type, button: e.target });
                 
                 const gameState = this.gameBloc.getState();
                 // В режимах PvE и Campaign игрок всегда 1, бот играет автоматически
@@ -266,10 +340,36 @@ class Game {
                 const gateY = playerId === 1 ? this.hexGrid.height - 1 : 0; // Игрок 1: последняя строка, Игрок 2: верхняя строка
                 const gatePos = {x: gateX, y: gateY};
                 
-                console.log('Создание солдата у ворот:', { gatePos, playerId, gameMode: gameState.gameMode });
+                const player = gameState.players[playerId];
+                const soldierConfig = this.soldierBloc.getSoldierConfig(type);
                 
-                const success = this.soldierBloc.createSoldier(gatePos, playerId, type);
+                console.log('=== ПАРАМЕТРЫ СОЗДАНИЯ СОЛДАТА ===', {
+                    type,
+                    playerId,
+                    gameMode: gameState.gameMode,
+                    gatePos,
+                    playerGold: player.gold,
+                    soldierCost: soldierConfig.cost,
+                    hasObstacleBloc: !!this.obstacleBloc,
+                    hasTowerBloc: !!this.towerBloc
+                });
+                
+                this.lastSoldierCreationAttempt = {
+                    type,
+                    playerId,
+                    gatePos,
+                    playerGold: player.gold,
+                    soldierCost: soldierConfig.cost,
+                    timestamp: Date.now()
+                };
+                this.lastSoldierCreationError = null;
+                
+                const success = this.soldierBloc.createSoldier(gatePos, playerId, type, this.obstacleBloc, this.towerBloc);
+                console.log('=== РЕЗУЛЬТАТ СОЗДАНИЯ СОЛДАТА ===', { success });
+                
                 if (success) {
+                    console.log('Солдат успешно создан!');
+                    this.lastSoldierCreationError = null;
                     // Очищаем выбор после создания солдата
                     this.playerBloc.clearSelection();
                     // Обновляем UI после изменения золота
@@ -280,8 +380,14 @@ class Game {
                         this.gameBloc.switchPlayer();
                     }
                 } else {
-                    console.log('Не удалось создать солдата. Недостаточно золота или другая ошибка.');
+                    const errorMsg = player.gold < soldierConfig.cost 
+                        ? `Недостаточно золота. Нужно: ${soldierConfig.cost}, есть: ${player.gold}`
+                        : 'Неизвестная ошибка при создании солдата';
+                    console.log('=== ОШИБКА СОЗДАНИЯ СОЛДАТА ===', errorMsg);
+                    this.lastSoldierCreationError = errorMsg;
                 }
+                
+                this.updateSoldierDebugInfo();
             });
         });
         
@@ -436,7 +542,11 @@ class Game {
             this.render();
         });
         
-        this.soldierBloc.subscribe(() => {
+        this.soldierBloc.subscribe((state) => {
+            console.log('=== SoldierBloc состояние изменилось ===', {
+                soldiersCount: state.soldiers ? state.soldiers.length : 0,
+                soldiers: state.soldiers ? state.soldiers.map(s => ({ id: s.id, playerId: s.playerId, type: s.type, hasPath: !!s.path })) : []
+            });
             this.render();
         });
         
@@ -462,6 +572,10 @@ class Game {
         
         this.showScreen('game-screen');
         console.log('Экран игры показан');
+        
+        // Обновляем имя игрока 2 / бота в зависимости от режима
+        const updatedGameState = this.gameBloc.getState();
+        this.updateUI(updatedGameState);
         
         // Пересчитываем размеры канваса после показа экрана
         // Используем requestAnimationFrame для гарантии отрисовки
@@ -524,6 +638,16 @@ class Game {
         document.getElementById('p2-gold').textContent = gameState.players[2].gold;
         document.getElementById('p2-health').textContent = gameState.players[2].baseHealth;
         
+        // Обновление имени игрока 2 / бота в зависимости от режима
+        const player2Header = document.querySelector('#player2-info h3');
+        if (player2Header) {
+            if (gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') {
+                player2Header.textContent = 'Бот';
+            } else {
+                player2Header.textContent = 'Игрок 2';
+            }
+        }
+        
         // Обновление кнопки паузы
         const pauseBtn = document.getElementById('btn-pause');
         pauseBtn.textContent = gameState.gameState === 'paused' ? 'Продолжить' : 'Пауза';
@@ -536,6 +660,12 @@ class Game {
                     victoryText = `Уровень ${gameState.level} пройден!`;
                 } else {
                     victoryText = `Игра окончена на уровне ${gameState.level}`;
+                }
+            } else if (gameState.gameMode === 'pve') {
+                if (gameState.winner === 1) {
+                    victoryText = 'Вы победили!';
+                } else {
+                    victoryText = 'Бот победил!';
                 }
             } else {
                 victoryText = `Победил Игрок ${gameState.winner}!`;
@@ -670,6 +800,15 @@ class Game {
             gold: gameState.players[currentPlayer].gold
         });
         
+        // Тестовый режим соседей
+        if (playerState.testNeighborsMode) {
+            console.log('=== ТЕСТОВЫЙ РЕЖИМ: выбор ячейки для просмотра соседей ===', hex);
+            this.playerBloc.setTestSelectedHex(hex);
+            // Обновление информации произойдёт в gameLoop
+            this.render(); // Принудительная перерисовка
+            return;
+        }
+
         // Размещение препятствия
         if (playerState.selectedObstacleType) {
             // Нельзя ставить препятствия на базах
@@ -777,7 +916,10 @@ class Game {
     }
 
     gameLoop(currentTime = performance.now()) {
-        if (!this.isRunning) return;
+        if (!this.isRunning) {
+            console.log('gameLoop: игра не запущена (isRunning = false)');
+            return;
+        }
         
         // При первом кадре lastTime может быть 0, поэтому ограничиваем deltaTime
         const deltaTime = this.lastTime > 0 ? currentTime - this.lastTime : 16; // 16мс = ~60 FPS
@@ -785,6 +927,7 @@ class Game {
         
         if (gameState.gameState === 'playing') {
             // Обновление солдат
+            console.log(`gameLoop: вызываем updateSoldiers, солдат в массиве: ${this.soldierBloc.getState().soldiers.length}`);
             this.soldierBloc.updateSoldiers(deltaTime, this.towerBloc, this.obstacleBloc);
             
             // Обновление бота
@@ -793,6 +936,12 @@ class Game {
         
         // Обновление отладочной информации о солдатах
         this.updateSoldierDebugInfo();
+        
+        // Обновление информации о тестировании соседей
+        const playerState = this.playerBloc.getState();
+        if (playerState.testNeighborsMode && playerState.testSelectedHex) {
+            this.updateTestNeighborsInfo(playerState.testSelectedHex);
+        }
         
         this.render();
         this.lastTime = currentTime;
@@ -807,27 +956,125 @@ class Game {
         const soldierState = this.soldierBloc.getState();
         const soldiers = soldierState.soldiers;
         
-        if (soldiers.length === 0) {
-            debugInfoEl.textContent = 'Нет солдат';
-            return;
+        let info = '';
+        
+        // Информация о последнем поиске пути
+        const pathfindingDebug = this.hexGrid.lastPathfindingDebug;
+        if (pathfindingDebug.startHex) {
+            info += `=== ОТЛАДКА ПОИСКА ПУТИ ===\n`;
+            info += `Старт: hex(${pathfindingDebug.startHex.q},${pathfindingDebug.startHex.r},${pathfindingDebug.startHex.s}) = arr(${pathfindingDebug.startArr.x},${pathfindingDebug.startArr.y})\n`;
+            info += `Цель: hex(${pathfindingDebug.targetHex.q},${pathfindingDebug.targetHex.r},${pathfindingDebug.targetHex.s}) = arr(${pathfindingDebug.targetArr.x},${pathfindingDebug.targetArr.y})\n`;
+            info += `Расстояние: ${pathfindingDebug.distance !== null ? pathfindingDebug.distance.toFixed(2) : 'неизвестно'}\n`;
+            info += `Итераций: ${pathfindingDebug.iterations}\n`;
+            info += `OpenSet в конце: ${pathfindingDebug.finalOpenSetSize}\n`;
+            
+            if (pathfindingDebug.neighbors && pathfindingDebug.neighbors.length > 0) {
+                info += `\nСоседи старта (${pathfindingDebug.neighbors.length} из 6 возможных):\n`;
+                pathfindingDebug.neighbors.forEach((n, i) => {
+                    info += `  ${i+1}. hex(${n.hex}) = arr${n.arr} ${n.blocked ? '❌ ЗАБЛОКИРОВАН' : '✅ свободен'}\n`;
+                });
+            }
+            
+            if (pathfindingDebug.iterationsDetails && pathfindingDebug.iterationsDetails.length > 0) {
+                info += `\nДетали итераций:\n`;
+                pathfindingDebug.iterationsDetails.forEach(detail => {
+                    info += `  Итерация ${detail.iteration}: current=${detail.currentArr}, dist=${detail.distanceToTarget.toFixed(1)}, f=${detail.fScore}, g=${detail.gScore}, open=${detail.openSetSize}, closed=${detail.closedSetSize}\n`;
+                    if (detail.addedNodes && detail.addedNodes.length > 0) {
+                        info += `    Добавлено узлов: ${detail.addedToOpenSet}/${detail.unblockedNeighbors}\n`;
+                        detail.addedNodes.forEach(node => {
+                            info += `      - ${node}\n`;
+                        });
+                    }
+                });
+            }
+            
+            if (pathfindingDebug.pathFound) {
+                info += `\n✅ Путь найден! Длина: ${pathfindingDebug.pathLength}\n`;
+            } else if (pathfindingDebug.error) {
+                info += `\n❌ ОШИБКА: ${pathfindingDebug.error}\n`;
+            }
+            
+            info += `\n`;
         }
         
-        let info = `Всего солдат: ${soldiers.length}\n\n`;
-        soldiers.forEach((soldier, index) => {
-            const dx = soldier.targetX - soldier.x;
-            const dy = soldier.targetY - soldier.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            info += `[${index}] ID:${soldier.id} P:${soldier.playerId} T:${soldier.type}\n`;
-            info += `  Позиция: x=${soldier.x.toFixed(3)} y=${soldier.y.toFixed(3)}\n`;
-            info += `  Цель: tx=${soldier.targetX} ty=${soldier.targetY}\n`;
-            info += `  Расстояние до цели: ${distance.toFixed(3)}\n`;
-            info += `  Скорость: ${soldier.speed.toFixed(4)}\n`;
-            info += `  Здоровье: ${soldier.health.toFixed(1)}/${soldier.maxHealth}\n`;
+        // Информация о последней попытке создания
+        if (this.lastSoldierCreationAttempt) {
+            const attempt = this.lastSoldierCreationAttempt;
+            const timeAgo = ((Date.now() - attempt.timestamp) / 1000).toFixed(1);
+            info += `=== ПОСЛЕДНЯЯ ПОПЫТКА СОЗДАНИЯ (${timeAgo}с назад) ===\n`;
+            info += `Тип: ${attempt.type || 'неизвестно'}\n`;
+            info += `Игрок: ${attempt.playerId}\n`;
+            info += `Ворота: x=${attempt.gatePos?.x} y=${attempt.gatePos?.y}\n`;
+            info += `Золото: ${attempt.playerGold} (нужно: ${attempt.soldierCost})\n`;
+            if (this.lastSoldierCreationError) {
+                info += `❌ ОШИБКА: ${this.lastSoldierCreationError}\n`;
+            } else {
+                info += `✅ Успешно\n`;
+            }
             info += `\n`;
-        });
+        }
+        
+        // Информация о солдатах
+        const actualSoldiersCount = soldiers ? soldiers.length : 0;
+        
+        if (actualSoldiersCount === 0) {
+            info += `Нет солдат (проверено в updateSoldierDebugInfo)\n`;
+            if (this.lastSoldierCreationError) {
+                info += `\nПричина ошибки: ${this.lastSoldierCreationError}\n`;
+            }
+            // Показываем, был ли солдат создан, но потом удалён
+            if (this.lastSoldierCreationAttempt && !this.lastSoldierCreationError) {
+                info += `\n⚠️ Солдат был создан (успешно), но не отображается.\n`;
+                info += `Возможно, был удалён в updateSoldiers из-за отсутствия пути.\n`;
+            }
+        } else {
+            info += `Всего солдат: ${actualSoldiersCount}\n\n`;
+            soldiers.forEach((soldier, index) => {
+                const dx = soldier.targetX - soldier.x;
+                const dy = soldier.targetY - soldier.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                const pathInfo = soldier.path ? `Путь: ${soldier.path.length} ячеек` : 'Путь: не вычислен';
+                
+                info += `[${index}] ID:${soldier.id} P:${soldier.playerId} T:${soldier.type}\n`;
+                info += `  Позиция: x=${soldier.x.toFixed(3)} y=${soldier.y.toFixed(3)}\n`;
+                info += `  Цель: tx=${soldier.targetX} ty=${soldier.targetY}\n`;
+                info += `  ${pathInfo}\n`;
+                info += `  Расстояние до цели: ${distance.toFixed(3)}\n`;
+                info += `  Скорость: ${soldier.speed.toFixed(4)}\n`;
+                info += `  Здоровье: ${soldier.health.toFixed(1)}/${soldier.maxHealth}\n`;
+                info += `\n`;
+            });
+        }
         
         debugInfoEl.textContent = info;
+    }
+
+    updateTestNeighborsInfo(selectedHex) {
+        const infoEl = document.getElementById('test-neighbors-info');
+        if (!infoEl) return;
+        
+        const normalizedHex = this.hexGrid.hexRound(selectedHex);
+        const arrPos = this.hexGrid.hexToArray(normalizedHex);
+        const neighbors = this.hexGrid.getHexNeighbors(normalizedHex);
+        
+        let info = `Выбранная ячейка:\n`;
+        info += `  Hex: (${normalizedHex.q}, ${normalizedHex.r}, ${normalizedHex.s})\n`;
+        info += `  Array: (${arrPos.x}, ${arrPos.y})\n\n`;
+        info += `Соседи (${neighbors.length} из 6):\n`;
+        
+        neighbors.forEach((neighbor, index) => {
+            const neighborArr = this.hexGrid.hexToArray(neighbor);
+            const blocked = this.hexGrid.isBlocked(neighbor, this.obstacleBloc, this.towerBloc);
+            info += `  ${index + 1}. Hex: (${neighbor.q}, ${neighbor.r}, ${neighbor.s}) → Array: (${neighborArr.x}, ${neighborArr.y}) ${blocked ? '❌ ЗАБЛОКИРОВАН' : '✅'}\n`;
+        });
+        
+        // Показываем, какие соседи отсутствуют (должно быть 6)
+        if (neighbors.length < 6) {
+            info += `\n⚠️ Отсутствует ${6 - neighbors.length} соседей (возможно, за границами)\n`;
+        }
+        
+        infoEl.textContent = info;
     }
 
     updateMousePosition(e) {

@@ -109,8 +109,9 @@ export class TowerBloc {
 
     getTowerAt(hex) {
         // Конвертируем hex координаты в array координаты для сравнения
-        const arr = { x: hex.q, y: hex.r + Math.floor(hex.q / 2) };
-        return this.state.towers.find(t => t.x === arr.x && t.y === arr.y);
+        // Используем тот же метод, что и в HexGrid.hexToArray
+        const arrPos = this.hexGrid.hexToArray(hex);
+        return this.state.towers.find(t => t.x === arrPos.x && t.y === arrPos.y);
     }
 
     getState() {

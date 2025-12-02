@@ -5,11 +5,75 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hex Tower Defense</title>
     <link rel="stylesheet" href="css/styles.css">
+    <script>
+        // КРИТИЧЕСКИ ВАЖНО: Самый первый скрипт - должен загружаться ДО любых других
+        // Подавляем ошибки расширений браузера, которые блокируют выполнение
+        (function() {
+            'use strict';
+            
+            function isExtensionError(msg) {
+                if (!msg) return false;
+                const lower = String(msg).toLowerCase();
+                return lower.includes('message channel') || 
+                       lower.includes('channel closed') || 
+                       lower.includes('listener indicated') || 
+                       lower.includes('asynchronous response') ||
+                       lower.includes('unchecked runtime') || 
+                       lower.includes('runtime.last') ||
+                       lower.includes('runtime.lasterror') ||
+                       lower.includes('message port');
+            }
+            
+            // Переопределяем console.error САМЫМ ПЕРВЫМ
+            const origError = console.error;
+            console.error = function(...args) {
+                const msg = args.join(' ');
+                if (isExtensionError(msg)) return; // Подавляем без вывода
+                origError.apply(console, args);
+            };
+            
+            // Перехватываем Promise rejections ДО того, как они попадут в консоль
+            const rejectHandler = function(e) {
+                const reason = e.reason || {};
+                const msg = (reason.message || reason.toString() || String(reason) || '').toLowerCase();
+                if (isExtensionError(msg)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    return false;
+                }
+            };
+            window.addEventListener('unhandledrejection', rejectHandler, true);
+            
+            // Перехватываем обычные ошибки
+            window.addEventListener('error', function(e) {
+                if (isExtensionError(e.message)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    return false;
+                }
+            }, true);
+            
+            console.log('✅ Обработчики ошибок установлены');
+        })();
+    </script>
 </head>
 <body>
     <div id="game-container">
         <div id="menu-screen" class="screen active">
             <h1>Hex Tower Defense</h1>
+            <div style="color: #fff; margin: 20px; font-size: 14px; text-align: center; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 5px;">
+                <p><strong>ВАЖНО для отладки:</strong></p>
+                <p>1. Откройте консоль (F12)</p>
+                <p>2. Отключите ВСЕ фильтры в консоли (Errors, Warnings, Info)</p>
+                <p>3. Обновите страницу (Ctrl+Shift+R)</p>
+                <p>4. Нажмите кнопку меню для запуска игры</p>
+                <p>5. Только ПОСЛЕ запуска игры нажимайте кнопки солдат</p>
+                <p style="color: #ff6b6b; margin-top: 10px;">
+                    Ошибка расширений браузера не критична - её можно игнорировать
+                </p>
+            </div>
             <div class="menu-buttons">
                 <button id="btn-pvp" class="menu-btn">Два игрока</button>
                 <button id="btn-pve" class="menu-btn">Против бота</button>
@@ -99,6 +163,13 @@
                     <h4 style="margin-bottom: 5px;">Отладка солдат</h4>
                     <div id="soldier-debug-info" style="color: #ccc; white-space: pre-wrap; font-family: monospace; line-height: 1.4;"></div>
                 </div>
+
+                <div id="test-panel" class="panel-section">
+                    <h4>Тест соседей</h4>
+                    <button id="btn-test-neighbors" class="btn">Включить тест соседей</button>
+                    <button id="btn-copy-test-info" class="btn" style="margin-top: 5px; background: #28a745; display: none;">Копировать информацию</button>
+                    <div id="test-neighbors-info" style="margin-top: 10px; color: #fff; font-size: 0.9em; white-space: pre-wrap; font-family: monospace; max-height: 300px; overflow-y: auto; background: rgba(0,0,0,0.5); padding: 8px; border-radius: 4px;"></div>
+                </div>
             </div>
         </div>
 
@@ -113,6 +184,8 @@
         // Проверка загрузки
         console.log('=== index.html загружен ===');
         console.log('Протокол:', window.location.protocol);
+        console.log('=== ВАЖНО: Проверьте фильтры в консоли браузера! ===');
+        console.log('=== Если логов нет, отключите фильтры в консоли ===');
         
         if (window.location.protocol === 'file:') {
             console.error('=== ОШИБКА: Файл открыт через file:// ===');
@@ -120,72 +193,64 @@
             alert('Игра не работает через file://!\n\nЗапустите локальный сервер:\n1. VS Code: "Live Server" → "Go Live"\n2. Или: python server.py\n3. Откройте http://localhost:8000');
         }
         
-        window.addEventListener('error', (e) => {
-            console.error('=== ГЛОБАЛЬНАЯ ОШИБКА ===', e.message, e.filename, e.lineno);
-        });
-        
-        window.addEventListener('unhandledrejection', (e) => {
-            console.error('=== UNHANDLED REJECTION ===', e.reason);
-        });
-    </script>
-    <script>
-        // Обработка ошибок от расширений браузера
-        window.addEventListener('error', (e) => {
-            if (e.message && e.message.includes('message channel closed')) {
-                console.warn('Ошибка расширения браузера (не критично):', e.message);
-                // Не блокируем выполнение - продолжаем работу
-                return true;
-            }
-        });
-        
-        // Обработка необработанных Promise rejections
-        // Более агрессивная обработка ошибок расширений
-        window.addEventListener('unhandledrejection', (e) => {
-            const reason = e.reason || {};
-            const message = reason.message || reason.toString() || '';
-            
-            // Перехватываем все ошибки связанные с message channel
+        // Обработка ошибок от расширений браузера - ПЕРЕД загрузкой модулей
+        window.addEventListener('error', function(e) {
+            const message = (e.message || '').toString();
             if (message.includes('message channel') || 
                 message.includes('channel closed') ||
-                message.includes('listener indicated')) {
-                console.warn('Ошибка расширения браузера (игнорируется):', message);
-                e.preventDefault(); // Предотвращаем вывод ошибки
-                return true;
-            }
-        });
-        
-        // Также перехватываем синхронные ошибки
-        window.addEventListener('error', (e) => {
-            const message = e.message || '';
-            if (message.includes('message channel') || 
-                message.includes('channel closed')) {
-                console.warn('Ошибка расширения браузера (игнорируется):', message);
+                message.includes('listener indicated') ||
+                message.includes('asynchronous response') ||
+                message.includes('Unchecked runtime.lastError')) {
+                e.stopPropagation();
+                e.stopImmediatePropagation();
                 e.preventDefault();
-                return true;
+                return false; // Предотвращаем вывод в консоль
+            }
+        }, true);
+        
+        // Обработка Promise rejections от расширений
+        window.addEventListener('unhandledrejection', function(e) {
+            const reason = e.reason || {};
+            const message = (reason.message || reason.toString() || '').toString();
+            
+            if (message.includes('message channel') || 
+                message.includes('channel closed') ||
+                message.includes('listener indicated') ||
+                message.includes('asynchronous response') ||
+                message.includes('Unchecked runtime.lastError')) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
             }
         }, true);
         
         console.log('Обработка ошибок расширений настроена');
         
-        // Глобальный обработчик для диагностики - ДО загрузки модуля
-        console.log('Установка глобального обработчика кликов...');
-        
-        // Используем setTimeout чтобы убедиться, что обработчики установлены после всех ошибок
-        setTimeout(() => {
-            document.addEventListener('click', (e) => {
-                try {
-                    const id = e.target.id || e.target.closest('button')?.id;
-                    if (id === 'btn-pvp' || id === 'btn-pve' || id === 'btn-campaign') {
-                        console.log('=== ГЛОБАЛЬНЫЙ ОБРАБОТЧИК: клик по кнопке меню ===', id, e.target);
-                    }
-                } catch (err) {
-                    console.error('Ошибка в обработчике клика:', err);
+        // Тест: проверка что скрипты работают
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('✅ DOM загружен');
+            setTimeout(() => {
+                console.log('✅ setTimeout работает');
+                const gameBtn = document.getElementById('btn-pvp');
+                if (gameBtn) {
+                    console.log('✅ Кнопка меню найдена:', gameBtn);
+                } else {
+                    console.error('❌ Кнопка меню НЕ найдена!');
                 }
-            }, true); // capture phase
-            
-            console.log('Глобальный обработчик кликов установлен');
-        }, 100);
+            }, 1000);
+        });
     </script>
-    <script type="module" src="js/main.js?v=73"></script>
+    <script type="module" src="js/main.js?v=112"></script>
+    <script>
+        // Проверка после загрузки модуля
+        setTimeout(() => {
+            console.log('=== ПРОВЕРКА ПОСЛЕ ЗАГРУЗКИ МОДУЛЯ ===');
+            console.log('window.game существует?', !!window.game);
+            if (window.game) {
+                console.log('isRunning:', window.game.isRunning);
+                console.log('gameBloc:', !!window.game.gameBloc);
+            }
+        }, 2000);
+    </script>
 </body>
 </html>
