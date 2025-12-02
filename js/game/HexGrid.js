@@ -180,6 +180,16 @@ export class HexGrid {
             return true; // Вне границ = заблокирован
         }
         
+        // Проверяем покрашенную часть базы (солдаты не могут проходить через неё)
+        // База игрока 2 (вверху) - вся верхняя строка (y === 0)
+        const isOnPlayer2Base = arrPos.y === 0;
+        // База игрока 1 (внизу) - последняя строка (y === height - 1, только чётные столбцы)
+        // Чётные столбцы (считая с 1): x=2,4,6,8,10,12,14 → индексы 1,3,5,7,9,11,13 (нечётные)
+        const isOnPlayer1Base = arrPos.y === this.height - 1 && arrPos.x % 2 === 1;
+        if (isOnPlayer1Base || isOnPlayer2Base) {
+            return true; // Покрашенная часть базы блокирует путь
+        }
+        
         // Проверяем препятствия (камни и деревья)
         if (obstacleBloc) {
             const obstacle = obstacleBloc.getObstacleAt(arrPos.x, arrPos.y);
