@@ -178,49 +178,30 @@ export class Renderer {
         this.ctx.translate(offsetX, offsetY);
         
         soldiers.forEach(soldier => {
-            // Плавное движение - используем точные координаты, а не округлённые
-            // Преобразуем array координаты в hex для вычисления пиксельных координат
-            const hex = this.hexGrid.arrayToHex(soldier.x, soldier.y);
+            // Движение от центра одной ячейки к центру другой
+            const currentHexIndex = Math.floor(soldier.currentHexIndex);
+            if (!soldier.path || currentHexIndex >= soldier.path.length - 1) {
+                // Достигли цели или путь не найден, рисуем на текущей позиции
+                const hex = this.hexGrid.arrayToHex(soldier.x, soldier.y);
+                const pixelPos = this.hexGrid.hexToPixel(hex);
+                this.drawSoldierAt(pixelPos, soldier);
+                return;
+            }
             
-            // Получаем базовые пиксельные координаты для целочисленной части
-            const baseHex = this.hexGrid.arrayToHex(Math.floor(soldier.x), Math.floor(soldier.y));
-            const basePixelPos = this.hexGrid.hexToPixel(baseHex);
+            const currentHex = soldier.path[currentHexIndex];
+            const nextHex = soldier.path[currentHexIndex + 1];
+            const currentPixel = this.hexGrid.hexToPixel(currentHex);
+            const nextPixel = this.hexGrid.hexToPixel(nextHex);
             
-            // Получаем пиксельные координаты для следующей ячейки (для интерполяции)
-            const nextX = Math.ceil(soldier.x);
-            const nextY = Math.ceil(soldier.y);
-            const nextHex = this.hexGrid.arrayToHex(nextX, nextY);
-            const nextPixelPos = this.hexGrid.hexToPixel(nextHex);
-            
-            // Вычисляем дробную часть для плавной интерполяции
-            const fracX = soldier.x - Math.floor(soldier.x);
-            const fracY = soldier.y - Math.floor(soldier.y);
-            
-            // Плавная интерполяция между ячейками
+            // Интерполяция между центрами ячеек на основе moveProgress
+            const progress = soldier.moveProgress || 0;
             const pixelPos = {
-                x: basePixelPos.x + (nextPixelPos.x - basePixelPos.x) * fracX,
-                y: basePixelPos.y + (nextPixelPos.y - basePixelPos.y) * fracY
+                x: currentPixel.x + (nextPixel.x - currentPixel.x) * progress,
+                y: currentPixel.y + (nextPixel.y - currentPixel.y) * progress
             };
             
-            // Рисуем прямоугольник-солдата
-            const size = this.hexGrid.hexSize * 0.4;
-            this.ctx.fillStyle = soldier.playerId === 1 ? '#90e24a' : '#e2904a';
-            this.ctx.fillRect(
-                pixelPos.x - size / 2,
-                pixelPos.y - size / 2,
-                size,
-                size
-            );
-            
-            // HP бар
-            const hpPercent = soldier.health / soldier.maxHealth;
-            this.ctx.fillStyle = hpPercent > 0.5 ? '#4a90e2' : '#e24a4a';
-            this.ctx.fillRect(
-                pixelPos.x - size / 2,
-                pixelPos.y - size / 2 - 5,
-                size * hpPercent,
-                3
-            );
+            // Рисуем солдата с поворотом
+            this.drawSoldierAt(pixelPos, soldier);
         });
         
         this.ctx.restore();
@@ -406,6 +387,46 @@ export class Renderer {
         
         // Подсветка ячейки под курсором
         this.hexGrid.drawHex(this.ctx, hex, 'rgba(255, 255, 255, 0.2)', 'rgba(255, 255, 255, 0.4)');
+        
+        this.ctx.restore();
+    }
+
+    drawSoldierAt(pixelPos, soldier) {
+        this.ctx.save();
+        
+        // Перемещаемся в позицию солдата
+        this.ctx.translate(pixelPos.x, pixelPos.y);
+        
+        // Поворачиваем в сторону движения
+        if (soldier.direction !== undefined) {
+            this.ctx.rotate(soldier.direction);
+        }
+        
+        // Рисуем прямоугольник-солдата (стрелка, указывающая направление)
+        const size = this.hexGrid.hexSize * 0.4;
+        this.ctx.fillStyle = soldier.playerId === 1 ? '#90e24a' : '#e2904a';
+        
+        // Рисуем треугольник (стрелка) вместо прямоугольника
+        this.ctx.beginPath();
+        this.ctx.moveTo(size / 2, 0); // Остриё стрелки впереди
+        this.ctx.lineTo(-size / 2, -size / 2); // Левый задний угол
+        this.ctx.lineTo(-size / 3, 0); // Центр задней части
+        this.ctx.lineTo(-size / 2, size / 2); // Правый задний угол
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // HP бар (рисуем до поворота, чтобы он всегда был горизонтальным)
+        this.ctx.restore();
+        this.ctx.save();
+        this.ctx.translate(pixelPos.x, pixelPos.y);
+        const hpPercent = soldier.health / soldier.maxHealth;
+        this.ctx.fillStyle = hpPercent > 0.5 ? '#4a90e2' : '#e24a4a';
+        this.ctx.fillRect(
+            -size / 2,
+            -size / 2 - 5,
+            size * hpPercent,
+            3
+        );
         
         this.ctx.restore();
     }

@@ -59,12 +59,14 @@ export class SoldierBloc {
         const soldier = {
             id: this.soldierIdCounter++,
             playerId,
-            currentHexIndex: 0, // Индекс текущей ячейки в пути (float для плавной интерполяции)
+            currentHexIndex: 0, // Индекс текущей ячейки в пути
             path: null, // Массив гексагонов пути (будет вычислен в updateSoldiers)
             startX: arrPos.x,
             startY: arrPos.y,
-            x: arrPos.x, // Текущая позиция (float для плавного движения между ячейками)
+            x: arrPos.x, // Текущая позиция (array координаты)
             y: arrPos.y,
+            moveProgress: 0, // Прогресс движения от текущей ячейки к следующей (0.0 - 1.0)
+            direction: 0, // Направление движения в радианах
             targetX,
             targetY,
             type,
@@ -175,6 +177,8 @@ export class SoldierBloc {
                 soldier.currentHexIndex = 0;
                 soldier.x = soldier.startX;
                 soldier.y = soldier.startY;
+                soldier.moveProgress = 0;
+                soldier.direction = 0;
             }
             
             // Если путь пустой после попытки вычисления, возвращаем деньги и удаляем солдата
@@ -209,21 +213,36 @@ export class SoldierBloc {
             const currentArr = this.hexGrid.hexToArray(currentHex);
             const nextArr = this.hexGrid.hexToArray(nextHex);
             
-            // Плавное движение между ячейками
-            const dx = nextArr.x - soldier.x;
-            const dy = nextArr.y - soldier.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            // Движение только от центра одной ячейки к центру другой
+            // Устанавливаем текущую позицию точно в центр текущей ячейки
+            soldier.x = currentArr.x;
+            soldier.y = currentArr.y;
             
-            if (distance < 0.05) {
+            // Вычисляем расстояние до следующей ячейки в пикселях
+            const currentPixel = this.hexGrid.hexToPixel(currentHex);
+            const nextPixel = this.hexGrid.hexToPixel(nextHex);
+            const pixelDx = nextPixel.x - currentPixel.x;
+            const pixelDy = nextPixel.y - currentPixel.y;
+            const pixelDistance = Math.sqrt(pixelDx * pixelDx + pixelDy * pixelDy);
+            
+            // Сохраняем направление движения для поворота (вычисляем всегда)
+            soldier.direction = Math.atan2(pixelDy, pixelDx);
+            
+            // Вычисляем прогресс движения (0.0 - 1.0)
+            if (!soldier.moveProgress) {
+                soldier.moveProgress = 0;
+            }
+            
+            // Скорость движения в пикселях за миллисекунду
+            const pixelSpeed = soldier.speed * normalizedDeltaTime;
+            soldier.moveProgress += pixelSpeed / pixelDistance;
+            
+            if (soldier.moveProgress >= 1.0) {
                 // Достигли следующей ячейки, переходим к следующей
                 soldier.currentHexIndex += 1;
+                soldier.moveProgress = 0;
                 soldier.x = nextArr.x;
                 soldier.y = nextArr.y;
-            } else {
-                // Двигаемся к следующей ячейке
-                const moveDistance = soldier.speed * normalizedDeltaTime * 0.01;
-                soldier.x += (dx / distance) * moveDistance;
-                soldier.y += (dy / distance) * moveDistance;
             }
 
             // Проверка попадания под огонь башен

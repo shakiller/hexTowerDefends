@@ -254,6 +254,8 @@ export class HexGrid {
     
     findPathAStar(startHex, targetHex, obstacleBloc = null, towerBloc = null) {
         // Полный алгоритм A* для сложных случаев
+        // ВАЖНО: алгоритм использует getHexNeighbors(), который правильно определяет соседей
+        // для чётных и нечётных столбцов в odd-r offset координатах
         const openSet = new Set();
         const closedSet = new Set();
         const cameFrom = new Map();
