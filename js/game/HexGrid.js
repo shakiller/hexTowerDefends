@@ -45,7 +45,7 @@ export class HexGrid {
 
     hexToPixel(hex) {
         // Используем offset координаты (odd-r)
-        // Стандартная формула odd-r: row = r + floor(q / 2)
+        // Стандартная формула: row = r + floor(q / 2)
         const col = hex.q;
         const row = hex.r + Math.floor(hex.q / 2);
         
@@ -63,39 +63,45 @@ export class HexGrid {
     }
 
     hexRound(hex) {
+        // Стандартный алгоритм округления кубических координат
+        // Округляем каждую координату
         let q = Math.round(hex.q);
         let r = Math.round(hex.r);
-        const s = Math.round(-hex.q - hex.r);
+        let s = Math.round(hex.s);
 
+        // Вычисляем ошибки округления
         const qDiff = Math.abs(q - hex.q);
         const rDiff = Math.abs(r - hex.r);
-        const sDiff = Math.abs(s - (-hex.q - hex.r));
+        const sDiff = Math.abs(s - hex.s);
 
+        // Исправляем координату с наибольшей ошибкой, используя условие q + r + s = 0
         if (qDiff > rDiff && qDiff > sDiff) {
             q = -r - s;
         } else if (rDiff > sDiff) {
             r = -q - s;
+        } else {
+            s = -q - r;
         }
 
-        return { q, r, s: -q - r };
+        return { q, r, s };
     }
 
     hexToArray(hex) {
-        // Конвертируем кубические координаты в массив индексов для odd-r offset
-        // Стандартная формула odd-r: col = q, row = r + floor(q / 2)
+        // Стандартное преобразование из кубических координат в odd-r offset координаты
+        // Формула: col = q, row = r + floor(q / 2)
         const col = hex.q;
         const row = hex.r + Math.floor(hex.q / 2);
         return { x: col, y: row };
     }
 
     arrayToHex(x, y) {
-        // Преобразование из array координат (x, y) в кубические координаты (q, r, s) для odd-r offset
-        // Обратная формула: q = col, r = row - floor(col / 2)
+        // Стандартное преобразование из odd-r offset координат в кубические координаты
+        // Формула: q = col, r = row - floor(col / 2), s = -q - r
         const q = x;
         const r = y - Math.floor(x / 2);
         const s = -q - r;
-        // Нормализуем координаты (q + r + s должно быть 0)
-        return this.hexRound({ q, r, s });
+        // Возвращаем нормализованные координаты (q + r + s = 0)
+        return { q, r, s };
     }
 
     isValidHex(hex) {
@@ -104,32 +110,57 @@ export class HexGrid {
     }
 
     getHexNeighbors(hex) {
-        // Возвращает соседей гексагона (6 направлений)
-        // Нормализуем входной hex перед вычислением соседей
+        // Возвращает соседей гексагона (6 направлений) используя кубические координаты
+        // Для pointy-top гексагонов: верхний, верхний правый, нижний правый, нижний, нижний левый, верхний левый
         const normalizedHex = this.hexRound(hex);
         
-        const directions = [
-            { q: 1, r: 0, s: -1 },   // Восток
-            { q: 1, r: -1, s: 0 },   // Северо-восток
-            { q: 0, r: -1, s: 1 },   // Северо-запад
-            { q: -1, r: 0, s: 1 },   // Запад
-            { q: -1, r: 1, s: 0 },   // Юго-запад
-            { q: 0, r: 1, s: -1 }    // Юго-восток
-        ];
+        // Получаем array координаты для определения чётности столбца
+        const arrPos = this.hexToArray(normalizedHex);
+        const isEvenColumn = arrPos.x % 2 === 0;
+        
+        // Направления соседей для pointy-top гексагонов в кубических координатах
+        // ВАЖНО: для odd-r offset координат направления различаются для чётных и нечётных столбцов
+        // Для нечётных столбцов (1, 3, 5, 7, 9...)
+        // Для чётных столбцов (2, 4, 6, 8, 10...)
+        let directions;
+        if (isEvenColumn) {
+            // Направления для чётных столбцов (на основе скриншота с (8,4))
+            // Для чётных столбцов диагональные соседи находятся на том же уровне или ниже
+            directions = [
+                { q: 0, r: -1, s: 1 },   // Верхний (север) → (8,3)
+                { q: 1, r: 0, s: -1 },   // Верхний правый (северо-восток) → (9,4) - на том же уровне
+                { q: 1, r: 1, s: -2 },   // Нижний правый (юго-восток) → (9,5) - ниже
+                { q: 0, r: 1, s: -1 },   // Нижний (юг) → (8,5)
+                { q: -1, r: 2, s: -1 },   // Нижний левый (юго-запад) → (7,5) - ниже
+                { q: -1, r: 1, s: 0 }   // Верхний левый (северо-запад) → (7,4) - на том же уровне
+            ];
+        } else {
+            // Направления для нечётных столбцов (на основе скриншота с (7,3))
+            directions = [
+                { q: 0, r: -1, s: 1 },   // Верхний (север) → (7,2)
+                { q: 1, r: -2, s: 1 },   // Верхний правый (северо-восток) → (8,2)
+                { q: 1, r: -1, s: 0 },   // Нижний правый (юго-восток) → (8,3)
+                { q: 0, r: 1, s: -1 },   // Нижний (юг) → (7,4)
+                { q: -1, r: 0, s: 1 },   // Нижний левый (юго-запад) → (6,3)
+                { q: -1, r: -1, s: 2 }   // Верхний левый (северо-запад) → (6,2)
+            ];
+        }
         
         const neighbors = [];
         for (const dir of directions) {
+            // Вычисляем соседа: если оба hex имеют q+r+s=0, то результат тоже будет иметь q+r+s=0
             const neighbor = {
                 q: normalizedHex.q + dir.q,
                 r: normalizedHex.r + dir.r,
                 s: normalizedHex.s + dir.s
             };
-            // Нормализуем соседа перед проверкой валидности
-            const normalizedNeighbor = this.hexRound(neighbor);
-            if (this.isValidHex(normalizedNeighbor)) {
-                neighbors.push(normalizedNeighbor);
+            // Проверяем валидность через array координаты
+            // НЕ вызываем hexRound, так как neighbor уже имеет правильные целочисленные координаты
+            if (this.isValidHex(neighbor)) {
+                neighbors.push(neighbor);
             }
         }
+        
         return neighbors;
     }
 

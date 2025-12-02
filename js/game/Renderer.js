@@ -434,8 +434,23 @@ export class Renderer {
             return;
         }
         
+        // Получаем array координаты для отображения
+        const arrPos = this.hexGrid.hexToArray(normalizedHex);
+        
         // Подсветка выбранной ячейки (красным) - более яркая
         this.hexGrid.drawHex(this.ctx, normalizedHex, 'rgba(255, 0, 0, 0.5)', 'rgba(255, 0, 0, 1.0)');
+        
+        // Отображаем координаты на выбранной ячейке
+        const pixelPos = this.hexGrid.hexToPixel(normalizedHex);
+        this.ctx.fillStyle = 'white';
+        this.ctx.strokeStyle = 'black';
+        this.ctx.lineWidth = 2;
+        this.ctx.font = 'bold 10px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        const coordText = `${arrPos.x},${arrPos.y}`;
+        this.ctx.strokeText(coordText, pixelPos.x, pixelPos.y);
+        this.ctx.fillText(coordText, pixelPos.x, pixelPos.y);
         
         // Получаем соседей
         const neighbors = this.hexGrid.getHexNeighbors(normalizedHex);
@@ -443,6 +458,13 @@ export class Renderer {
         // Подсветка соседей (зелёным) - более яркая
         neighbors.forEach((neighbor, index) => {
             this.hexGrid.drawHex(this.ctx, neighbor, 'rgba(0, 255, 0, 0.5)', 'rgba(0, 255, 0, 1.0)');
+            
+            // Отображаем координаты на соседях
+            const neighborArr = this.hexGrid.hexToArray(neighbor);
+            const neighborPixelPos = this.hexGrid.hexToPixel(neighbor);
+            const neighborCoordText = `${neighborArr.x},${neighborArr.y}`;
+            this.ctx.strokeText(neighborCoordText, neighborPixelPos.x, neighborPixelPos.y);
+            this.ctx.fillText(neighborCoordText, neighborPixelPos.x, neighborPixelPos.y);
         });
         
         this.ctx.restore();

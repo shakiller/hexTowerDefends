@@ -1058,15 +1058,24 @@ class Game {
         const arrPos = this.hexGrid.hexToArray(normalizedHex);
         const neighbors = this.hexGrid.getHexNeighbors(normalizedHex);
         
+        // Обратное преобразование для проверки
+        const backToHex = this.hexGrid.arrayToHex(arrPos.x, arrPos.y);
+        
         let info = `Выбранная ячейка:\n`;
         info += `  Hex: (${normalizedHex.q}, ${normalizedHex.r}, ${normalizedHex.s})\n`;
-        info += `  Array: (${arrPos.x}, ${arrPos.y})\n\n`;
+        info += `  Array: (${arrPos.x}, ${arrPos.y})\n`;
+        info += `  Проверка обратного преобразования: Hex(${backToHex.q}, ${backToHex.r}, ${backToHex.s})\n`;
+        info += `  Разница: q=${normalizedHex.q - backToHex.q}, r=${normalizedHex.r - backToHex.r}\n\n`;
         info += `Соседи (${neighbors.length} из 6):\n`;
         
         neighbors.forEach((neighbor, index) => {
             const neighborArr = this.hexGrid.hexToArray(neighbor);
+            const backNeighborHex = this.hexGrid.arrayToHex(neighborArr.x, neighborArr.y);
             const blocked = this.hexGrid.isBlocked(neighbor, this.obstacleBloc, this.towerBloc);
-            info += `  ${index + 1}. Hex: (${neighbor.q}, ${neighbor.r}, ${neighbor.s}) → Array: (${neighborArr.x}, ${neighborArr.y}) ${blocked ? '❌ ЗАБЛОКИРОВАН' : '✅'}\n`;
+            const diffX = neighborArr.x - arrPos.x;
+            const diffY = neighborArr.y - arrPos.y;
+            info += `  ${index + 1}. Hex: (${neighbor.q}, ${neighbor.r}, ${neighbor.s}) → Array: (${neighborArr.x}, ${neighborArr.y}) [Δx=${diffX}, Δy=${diffY}] ${blocked ? '❌ ЗАБЛОКИРОВАН' : '✅'}\n`;
+            info += `      Обратное: Hex(${backNeighborHex.q}, ${backNeighborHex.r}, ${backNeighborHex.s})\n`;
         });
         
         // Показываем, какие соседи отсутствуют (должно быть 6)
