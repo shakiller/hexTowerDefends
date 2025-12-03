@@ -13,13 +13,13 @@ export class WorkerBloc {
             capacity: 10,      // Вместительность
             health: 30,         // Жизнь
             gatherSpeed: 1000,  // Скорость сбора (мс на единицу золота)
-            moveSpeed: 0.8      // Скорость перемещения (множитель от базовой скорости)
+            moveSpeed: 0.1      // Скорость перемещения (множитель от базовой скорости)
         };
         
         // Настройки рабочих-строителей
         this.builderSettings = {
             health: 30,         // Жизнь
-            moveSpeed: 0.8,     // Скорость перемещения
+            moveSpeed: 0.1,     // Скорость перемещения
             buildSpeed: 2000    // Скорость строительства (мс)
         };
     }
@@ -103,7 +103,7 @@ export class WorkerBloc {
             } else if (setting === 'buildSpeed') {
                 this.builderSettings[setting] = Math.max(100, value);
             } else if (setting === 'moveSpeed') {
-                this.builderSettings[setting] = Math.max(0.1, Math.min(2.0, value));
+                this.builderSettings[setting] = Math.max(0.01, Math.min(0.2, value));
             }
         }
     }
@@ -158,7 +158,7 @@ export class WorkerBloc {
         }
     }
 
-    updateGatherer(worker, currentTime, deltaTime, goldBloc, obstacleBloc, towerBloc, hexGrid) {
+    updateGatherer(worker, currentTime, normalizedDeltaTime, goldBloc, obstacleBloc, towerBloc, hexGrid) {
         const currentHex = hexGrid.arrayToHex(worker.x, worker.y);
         const currentArr = hexGrid.hexToArray(currentHex);
 
@@ -183,11 +183,12 @@ export class WorkerBloc {
             // Идём на базу
             if (!worker.path || worker.targetX !== centerX || worker.targetY !== baseY) {
                 const targetHex = hexGrid.arrayToHex(centerX, baseY);
-                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc);
+                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
                 worker.currentHexIndex = 0;
                 worker.moveProgress = 0;
                 worker.targetX = centerX;
                 worker.targetY = baseY;
+                this.emit(); // Уведомляем об изменении пути
             }
         }
         // Если рабочий собирает золото
@@ -201,10 +202,11 @@ export class WorkerBloc {
                 worker.targetY = null;
             } else {
                 const goldArr = { x: goldPile.x, y: goldPile.y };
-                const distance = Math.sqrt(Math.pow(goldArr.x - currentArr.x, 2) + Math.pow(goldArr.y - currentArr.y, 2));
+                // Проверяем, находится ли рабочий в той же клетке, что и золото
+                const isOnSameCell = currentArr.x === goldArr.x && currentArr.y === goldArr.y;
 
-                // Если рядом с золотом - собираем
-                if (distance <= 1.5) {
+                // Если рабочий в той же клетке, что и золото - собираем
+                if (isOnSameCell) {
                     const timeSinceLastGather = currentTime - (worker.lastGatherTime || 0);
                     if (timeSinceLastGather >= this.gathererSettings.gatherSpeed) {
                         const collected = goldBloc.collectGold(worker.targetGoldId, 1);
@@ -223,11 +225,12 @@ export class WorkerBloc {
                     // Идём к золоту
                     if (!worker.path || worker.targetX !== goldArr.x || worker.targetY !== goldArr.y) {
                         const targetHex = hexGrid.arrayToHex(goldArr.x, goldArr.y);
-                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc);
+                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
                         worker.currentHexIndex = 0;
                         worker.moveProgress = 0;
                         worker.targetX = goldArr.x;
                         worker.targetY = goldArr.y;
+                        this.emit(); // Уведомляем об изменении пути
                     }
                 }
             }
@@ -252,9 +255,20 @@ export class WorkerBloc {
                 worker.targetX = closestGold.x;
                 worker.targetY = closestGold.y;
                 const targetHex = hexGrid.arrayToHex(closestGold.x, closestGold.y);
-                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc);
+                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
                 worker.currentHexIndex = 0;
                 worker.moveProgress = 0;
+                
+                // Отладка
+                if (!worker.path || worker.path.length === 0) {
+                    console.log(`[Worker ${worker.id}] Путь к золоту не найден! От ${currentHex.q},${currentHex.r} до ${targetHex.q},${targetHex.r}`);
+                } else {
+                    console.log(`[Worker ${worker.id}] Путь к золоту найден: ${worker.path.length} ячеек`);
+                }
+                
+                this.emit(); // Уведомляем об изменении пути
+            } else {
+                console.log(`[Worker ${worker.id}] Золото не найдено!`);
             }
         }
 
@@ -275,7 +289,9 @@ export class WorkerBloc {
                 
                 const baseSpeed = 1.0 * this.gathererSettings.moveSpeed;
                 const pixelSpeed = baseSpeed * normalizedDeltaTime * 1000; // Преобразуем обратно в пиксели
-                worker.moveProgress += pixelSpeed / pixelDistance;
+                if (pixelDistance > 0) {
+                    worker.moveProgress += pixelSpeed / pixelDistance;
+                }
                 
                 if (worker.moveProgress >= 1.0) {
                     worker.currentHexIndex += 1;
@@ -295,10 +311,11 @@ export class WorkerBloc {
         // Если есть задача на строительство
         if (worker.buildingTarget) {
             const target = worker.buildingTarget;
-            const distance = Math.sqrt(Math.pow(target.x - currentArr.x, 2) + Math.pow(target.y - currentArr.y, 2));
+            // Проверяем, находится ли рабочий в той же клетке, что и место строительства
+            const isOnSameCell = currentArr.x === target.x && currentArr.y === target.y;
 
-            // Если рядом с местом строительства - строим
-            if (distance <= 1.5) {
+            // Если рабочий в той же клетке, что и место строительства - строим
+            if (isOnSameCell) {
                 const timeSinceLastBuild = currentTime - (worker.lastBuildTime || 0);
                 if (timeSinceLastBuild >= this.builderSettings.buildSpeed) {
                     // Создаём препятствие
@@ -315,7 +332,7 @@ export class WorkerBloc {
                     const centerX = Math.floor(hexGrid.width / 2);
                     const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
                     const targetHex = hexGrid.arrayToHex(centerX, baseY);
-                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc);
+                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
                     worker.currentHexIndex = 0;
                     worker.moveProgress = 0;
                     worker.targetX = centerX;
@@ -328,7 +345,7 @@ export class WorkerBloc {
                 // Идём к месту строительства
                 if (!worker.path || worker.targetX !== target.x || worker.targetY !== target.y) {
                     const targetHex = hexGrid.arrayToHex(target.x, target.y);
-                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc);
+                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
                     worker.currentHexIndex = 0;
                     worker.moveProgress = 0;
                     worker.targetX = target.x;
@@ -347,7 +364,7 @@ export class WorkerBloc {
                 // Возвращаемся на базу
                 if (!worker.path || worker.targetX !== centerX || worker.targetY !== baseY) {
                     const targetHex = hexGrid.arrayToHex(centerX, baseY);
-                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc);
+                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
                     worker.currentHexIndex = 0;
                     worker.moveProgress = 0;
                     worker.targetX = centerX;

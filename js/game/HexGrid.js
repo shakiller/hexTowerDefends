@@ -219,7 +219,7 @@ export class HexGrid {
         return hexesInRange.some(hex => this.hexKey(hex) === targetKey);
     }
 
-    isBlocked(hex, obstacleBloc, towerBloc) {
+    isBlocked(hex, obstacleBloc, towerBloc, allowGates = false) {
         // Проверяем, заблокирована ли ячейка препятствием или башней
         // Нормализуем hex координаты перед преобразованием
         const normalizedHex = this.hexRound(hex);
@@ -230,14 +230,44 @@ export class HexGrid {
             return true; // Вне границ = заблокирован
         }
         
-        // Проверяем покрашенную часть базы (солдаты не могут проходить через неё)
+        // Проверяем покрашенную часть базы
+        const centerX = Math.floor(this.width / 2);
+        
         // База игрока 2 (вверху) - вся верхняя строка (y === 0)
         const isOnPlayer2Base = arrPos.y === 0;
-        // База игрока 1 (внизу) - последняя строка (y === height - 1, только чётные столбцы)
+        // База игрока 1 (внизу) состоит из двух строк:
+        // 1. Предпоследняя строка (y === height - 2) с чётными индексами x (x % 2 === 0)
+        // 2. Последняя строка (y === height - 1) с нечётными индексами x (x % 2 === 1)
         // Чётные столбцы (считая с 1): x=2,4,6,8,10,12,14 → индексы 1,3,5,7,9,11,13 (нечётные)
-        const isOnPlayer1Base = arrPos.y === this.height - 1 && arrPos.x % 2 === 1;
+        const isOnPlayer1BaseRow1 = arrPos.y === this.height - 2 && arrPos.x % 2 === 0; // Предпоследняя строка, чётные x
+        const isOnPlayer1BaseRow2 = arrPos.y === this.height - 1 && arrPos.x % 2 === 1; // Последняя строка, нечётные x
+        const isOnPlayer1Base = isOnPlayer1BaseRow1 || isOnPlayer1BaseRow2;
+        
+        // Проверяем, является ли это воротами (доступны для рабочих)
+        // Ворота игрока 2: центральная ячейка на верхней строке (вся строка покрашена)
+        const isGatePlayer2 = arrPos.x === centerX && arrPos.y === 0;
+        // Ворота игрока 1: центральная ячейка на предпоследней строке (height - 2) с чётным индексом x
+        // или на последней строке (height - 1) с нечётным индексом x, если centerX нечётный
+        const isGatePlayer1Row1 = arrPos.x === centerX && arrPos.y === this.height - 2 && centerX % 2 === 0;
+        const isGatePlayer1Row2 = arrPos.x === centerX && arrPos.y === this.height - 1 && centerX % 2 === 1;
+        const isGatePlayer1 = isGatePlayer1Row1 || isGatePlayer1Row2;
+        const isGate = isGatePlayer2 || isGatePlayer1;
+        
+        // Если это покрашенная зона базы
         if (isOnPlayer1Base || isOnPlayer2Base) {
-            return true; // Покрашенная часть базы блокирует путь
+            // Для солдат (allowGates = false) - вся покрашенная зона блокируется
+            // Для рабочих (allowGates = true) - только ворота доступны, остальная покрашенная зона блокируется
+            if (!allowGates) {
+                // Солдаты не могут проходить через покрашенную зону базы
+                return true;
+            } else {
+                // Рабочие могут проходить только через ворота
+                if (!isGate) {
+                    // Это покрашенная зона, но не ворота - блокируем
+                    return true;
+                }
+                // Это ворота - разрешаем проход для рабочих (продолжаем проверку препятствий)
+            }
         }
         
         // Проверяем препятствия (камни и деревья)
@@ -268,7 +298,7 @@ export class HexGrid {
         return `${hex.q},${hex.r},${hex.s}`;
     }
 
-    findPath(startHex, targetHex, obstacleBloc = null, towerBloc = null) {
+    findPath(startHex, targetHex, obstacleBloc = null, towerBloc = null, allowGates = false) {
         // Очищаем предыдущую отладочную информацию
         this.lastPathfindingDebug = {
             startHex: null,
@@ -309,10 +339,10 @@ export class HexGrid {
         }
         
         // Используем A* алгоритм
-        return this.findPathAStar(startHex, targetHex, obstacleBloc, towerBloc);
+        return this.findPathAStar(startHex, targetHex, obstacleBloc, towerBloc, allowGates);
     }
     
-    findPathAStar(startHex, targetHex, obstacleBloc = null, towerBloc = null) {
+    findPathAStar(startHex, targetHex, obstacleBloc = null, towerBloc = null, allowGates = false) {
         // Полный алгоритм A* для сложных случаев
         // ВАЖНО: алгоритм использует getHexNeighbors(), который правильно определяет соседей
         // для чётных и нечётных столбцов в odd-r offset координатах
@@ -395,7 +425,7 @@ export class HexGrid {
                     return {
                         hex: `${n.q},${n.r},${n.s}`,
                         arr: `(${nArr.x},${nArr.y})`,
-                        blocked: this.isBlocked(n, obstacleBloc, towerBloc)
+                        blocked: this.isBlocked(n, obstacleBloc, towerBloc, allowGates)
                     };
                 });
             }
@@ -435,7 +465,7 @@ export class HexGrid {
                 if (closedSet.has(neighborKey)) continue;
                 
                 // Пропускаем заблокированные ячейки (но разрешаем цель даже если она заблокирована)
-                if (neighborKey !== targetKey && this.isBlocked(neighbor, obstacleBloc, towerBloc)) {
+                if (neighborKey !== targetKey && this.isBlocked(neighbor, obstacleBloc, towerBloc, allowGates)) {
                     continue;
                 }
                 

@@ -107,6 +107,7 @@ export class Renderer {
                 const hex = this.hexGrid.arrayToHex(x, y);
                 
                 // Подсветка чётных ячеек (x=0,2,4,6,8,10,12,14) на предпоследнем ряду (y=50)
+                // Это часть базы игрока 1 - нужно также проверять в isBlocked
                 let fillColor = '#1a3a5a';
                 let strokeColor = '#2a4a6a';
                 if (y === this.hexGrid.height - 2 && x % 2 === 0) {
@@ -490,6 +491,83 @@ export class Renderer {
         
         this.ctx.restore();
     }
+    
+    drawBaseIndices() {
+        // Отдельная функция для отображения индексов в самом конце рендеринга
+        this.ctx.save();
+        
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        // Настройки текста
+        this.ctx.font = 'bold 16px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        
+        // База игрока 1 (внизу) - отображаем индексы на двух строках
+        // Строка 1: предпоследняя строка (height - 2) с чётными индексами x
+        const player1BaseY1 = this.hexGrid.height - 2;
+        console.log(`[drawBaseIndices] Player 1 base row 1: y=${player1BaseY1}, painting indices for x values:`, 
+            Array.from({length: this.hexGrid.width}, (_, i) => i).filter(x => x % 2 === 0));
+        for (let x = 0; x < this.hexGrid.width; x++) {
+            if (x % 2 === 0) {
+                const hex = this.hexGrid.arrayToHex(x, player1BaseY1);
+                const pixelPos = this.hexGrid.hexToPixel(hex);
+                const text = `${x},${player1BaseY1}`;
+                // Обводка для лучшей видимости
+                this.ctx.strokeStyle = '#000000';
+                this.ctx.lineWidth = 4;
+                this.ctx.strokeText(text, pixelPos.x, pixelPos.y);
+                // Заливка текста
+                this.ctx.fillStyle = '#ffff00'; // Жёлтый для лучшей видимости
+                this.ctx.fillText(text, pixelPos.x, pixelPos.y);
+            }
+        }
+        
+        // Строка 2: последняя строка (height - 1) с нечётными индексами x
+        const player1BaseY2 = this.hexGrid.height - 1;
+        console.log(`[drawBaseIndices] Player 1 base row 2: y=${player1BaseY2}, painting indices for x values:`, 
+            Array.from({length: this.hexGrid.width}, (_, i) => i).filter(x => x % 2 === 1));
+        for (let x = 0; x < this.hexGrid.width; x++) {
+            if (x % 2 === 1) {
+                const hex = this.hexGrid.arrayToHex(x, player1BaseY2);
+                const pixelPos = this.hexGrid.hexToPixel(hex);
+                const text = `${x},${player1BaseY2}`;
+                // Обводка для лучшей видимости
+                this.ctx.strokeStyle = '#000000';
+                this.ctx.lineWidth = 4;
+                this.ctx.strokeText(text, pixelPos.x, pixelPos.y);
+                // Заливка текста
+                this.ctx.fillStyle = '#ffff00'; // Жёлтый для лучшей видимости
+                this.ctx.fillText(text, pixelPos.x, pixelPos.y);
+            }
+        }
+        
+        // База игрока 2 (вверху) - отображаем индексы на всех покрашенных ячейках
+        const player2BaseY = 0;
+        console.log(`[drawBaseIndices] Player 2 base: y=${player2BaseY}, painting indices for all x values`);
+        for (let x = 0; x < this.hexGrid.width; x++) {
+            const hex = this.hexGrid.arrayToHex(x, player2BaseY);
+            const pixelPos = this.hexGrid.hexToPixel(hex);
+            const text = `${x},${player2BaseY}`;
+            // Обводка для лучшей видимости
+            this.ctx.strokeStyle = '#000000';
+            this.ctx.lineWidth = 4;
+            this.ctx.strokeText(text, pixelPos.x, pixelPos.y);
+            // Заливка текста
+            this.ctx.fillStyle = '#ffff00'; // Жёлтый для лучшей видимости
+            this.ctx.fillText(text, pixelPos.x, pixelPos.y);
+        }
+        
+        this.ctx.restore();
+    }
 
     drawGates() {
         this.ctx.save();
@@ -514,6 +592,18 @@ export class Renderer {
         this.ctx.lineWidth = 4;
         this.hexGrid.drawHex(this.ctx, hex1, 'rgba(255, 255, 0, 0.2)', '#ffff00');
         
+        // Отображаем индексы ворот игрока 1
+        const pixelPos1 = this.hexGrid.hexToPixel(hex1);
+        const text1 = `${gateX},${player1GateY}`;
+        this.ctx.font = 'bold 14px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.strokeStyle = '#000000';
+        this.ctx.lineWidth = 3;
+        this.ctx.strokeText(text1, pixelPos1.x, pixelPos1.y);
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillText(text1, pixelPos1.x, pixelPos1.y);
+        
         // Ворота игрока 2 (вверху по центру) - x=центр, y=верх
         const player2GateY = 0; // Верхняя строка
         const hex2 = this.hexGrid.arrayToHex(centerX, player2GateY);
@@ -523,6 +613,18 @@ export class Renderer {
         this.ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
         this.ctx.lineWidth = 4;
         this.hexGrid.drawHex(this.ctx, hex2, 'rgba(255, 255, 0, 0.2)', '#ffff00');
+        
+        // Отображаем индексы ворот игрока 2
+        const pixelPos2 = this.hexGrid.hexToPixel(hex2);
+        const text2 = `${centerX},${player2GateY}`;
+        this.ctx.font = 'bold 14px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.strokeStyle = '#000000';
+        this.ctx.lineWidth = 3;
+        this.ctx.strokeText(text2, pixelPos2.x, pixelPos2.y);
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillText(text2, pixelPos2.x, pixelPos2.y);
         
         this.ctx.restore();
     }
@@ -823,6 +925,9 @@ export class Renderer {
         if (playerState.testNeighborsMode && playerState.testSelectedHex) {
             this.drawTestNeighbors(playerState.testSelectedHex);
         }
+        
+        // Отображаем индексы в самом конце, чтобы они точно были видны
+        this.drawBaseIndices();
     }
 
     drawPlacementPreview(gameState, playerState, towerState, obstacleState = null) {

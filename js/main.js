@@ -49,6 +49,7 @@ class Game {
         
         console.log('Вызов setupEventListeners...');
         this.setupEventListeners();
+        this.setupDebugTabs();
         console.log('setupEventListeners завершён');
         
         console.log('Вызов setupBLoCSubscriptions...');
@@ -1172,6 +1173,16 @@ class Game {
         const arrHex = this.hexGrid.hexToArray(hex);
         console.log('Выбранная ячейка массива:', arrHex);
         
+        // Проверка, открыта ли вкладка "Ячейки" для отладки
+        const cellTab = document.getElementById('debug-tab-cells');
+        const cellInfo = document.getElementById('cell-debug-info');
+        if (cellTab && cellInfo && cellInfo.style.display === 'block') {
+            // Сохраняем выбранную ячейку для отладки
+            this.selectedCellForDebug = { hex, arrHex };
+            this.updateCellDebugInfo();
+            return; // Не обрабатываем клик дальше в режиме отладки ячеек
+        }
+        
         const playerState = this.playerBloc.getState();
         // В режимах PvE и Campaign игрок всегда 1, бот играет автоматически
         // В PvP используется currentPlayer
@@ -1422,8 +1433,10 @@ class Game {
             this.botAI.update(currentTime);
         }
         
-        // Обновление отладочной информации о солдатах
+        // Обновление отладочной информации о солдатах и рабочих
         this.updateSoldierDebugInfo();
+        this.updateWorkerDebugInfo();
+        this.updateCellDebugInfo();
         
         // Обновление информации о тестировании соседей
         if (playerState.testNeighborsMode && playerState.testSelectedHex) {
@@ -1535,6 +1548,203 @@ class Game {
         }
         
         debugInfoEl.textContent = info;
+    }
+
+    updateWorkerDebugInfo() {
+        const debugInfoEl = document.getElementById('worker-debug-info');
+        if (!debugInfoEl) return;
+        
+        const workerState = this.workerBloc.getState();
+        const workers = workerState.workers;
+        
+        let info = '';
+        
+        const actualWorkersCount = workers ? workers.length : 0;
+        
+        if (actualWorkersCount === 0) {
+            info += `Нет рабочих\n`;
+        } else {
+            info += `Всего рабочих: ${actualWorkersCount}\n\n`;
+            workers.forEach((worker, index) => {
+                const pathInfo = worker.path ? `Путь: ${worker.path.length} ячеек, индекс: ${worker.currentHexIndex.toFixed(2)}` : 'Путь: не вычислен';
+                const progressInfo = worker.path ? `Прогресс: ${(worker.moveProgress * 100).toFixed(1)}%` : '';
+                
+                info += `[${index}] ID:${worker.id} P:${worker.playerId} T:${worker.type}\n`;
+                info += `  Позиция: x=${worker.x} y=${worker.y}\n`;
+                info += `  ${pathInfo}\n`;
+                if (progressInfo) info += `  ${progressInfo}\n`;
+                info += `  Здоровье: ${worker.health.toFixed(1)}/${worker.maxHealth}\n`;
+                
+                if (worker.type === 'gatherer') {
+                    info += `  Несёт золото: ${worker.carryingGold ? 'Да' : 'Нет'}\n`;
+                    info += `  Количество золота: ${worker.goldAmount}/${this.workerBloc.getGathererSettings().capacity}\n`;
+                    info += `  Целевое золото ID: ${worker.targetGoldId || 'нет'}\n`;
+                    if (worker.targetX !== null && worker.targetY !== null) {
+                        info += `  Цель: x=${worker.targetX} y=${worker.targetY}\n`;
+                    }
+                } else if (worker.type === 'builder') {
+                    info += `  Задача строительства: ${worker.buildingTarget ? `${worker.buildingTarget.type} на (${worker.buildingTarget.x},${worker.buildingTarget.y})` : 'нет'}\n`;
+                    if (worker.targetX !== null && worker.targetY !== null) {
+                        info += `  Цель: x=${worker.targetX} y=${worker.targetY}\n`;
+                    }
+                }
+                info += `\n`;
+            });
+        }
+        
+        debugInfoEl.textContent = info;
+    }
+
+    updateCellDebugInfo() {
+        const debugInfoEl = document.getElementById('cell-debug-info');
+        if (!debugInfoEl) return;
+        
+        if (!this.selectedCellForDebug) {
+            debugInfoEl.textContent = 'Кликните на ячейку для просмотра её состояния';
+            return;
+        }
+        
+        const { hex, arrHex } = this.selectedCellForDebug;
+        const normalizedHex = this.hexGrid.hexRound(hex);
+        
+        // Проверяем состояние ячейки
+        const isBlockedSoldier = this.hexGrid.isBlocked(normalizedHex, this.obstacleBloc, this.towerBloc, false);
+        const isBlockedWorker = this.hexGrid.isBlocked(normalizedHex, this.obstacleBloc, this.towerBloc, true);
+        
+        // Проверяем покрашенную зону базы
+        const centerX = Math.floor(this.hexGrid.width / 2);
+        const isOnPlayer2Base = arrHex.y === 0;
+        // База игрока 1 состоит из двух строк:
+        // 1. Предпоследняя строка (height - 2) с чётными индексами x
+        // 2. Последняя строка (height - 1) с нечётными индексами x
+        const isOnPlayer1BaseRow1 = arrHex.y === this.hexGrid.height - 2 && arrHex.x % 2 === 0;
+        const isOnPlayer1BaseRow2 = arrHex.y === this.hexGrid.height - 1 && arrHex.x % 2 === 1;
+        const isOnPlayer1Base = isOnPlayer1BaseRow1 || isOnPlayer1BaseRow2;
+        const isGatePlayer2 = arrHex.x === centerX && arrHex.y === 0;
+        const isGatePlayer1Row1 = arrHex.x === centerX && arrHex.y === this.hexGrid.height - 2 && centerX % 2 === 0;
+        const isGatePlayer1Row2 = arrHex.x === centerX && arrHex.y === this.hexGrid.height - 1 && centerX % 2 === 1;
+        const isGatePlayer1 = isGatePlayer1Row1 || isGatePlayer1Row2;
+        const isGate = isGatePlayer2 || isGatePlayer1;
+        
+        // Проверяем препятствия
+        const obstacle = this.obstacleBloc.getObstacleAt(arrHex.x, arrHex.y);
+        
+        // Проверяем башни
+        const towerState = this.towerBloc.getState();
+        const tower = towerState.towers.find(t => t.x === arrHex.x && t.y === arrHex.y);
+        
+        // Проверяем золото
+        const goldState = this.goldBloc.getState();
+        const goldPile = goldState.goldPiles.find(p => p.x === arrHex.x && p.y === arrHex.y && !p.collected);
+        
+        // Проверяем солдат
+        const soldierState = this.soldierBloc.getState();
+        const soldiers = soldierState.soldiers.filter(s => s.x === arrHex.x && s.y === arrHex.y);
+        
+        // Проверяем рабочих
+        const workerState = this.workerBloc.getState();
+        const workers = workerState.workers.filter(w => w.x === arrHex.x && w.y === arrHex.y);
+        
+        // Формируем информацию
+        let info = `=== СОСТОЯНИЕ ЯЧЕЙКИ ===\n\n`;
+        info += `Координаты:\n`;
+        info += `  Hex: (${hex.q}, ${hex.r}, ${hex.s})\n`;
+        info += `  Array: (${arrHex.x}, ${arrHex.y})\n\n`;
+        
+        info += `Покрашенная зона базы:\n`;
+        info += `  База игрока 1: ${isOnPlayer1Base ? 'ДА' : 'НЕТ'}\n`;
+        info += `  База игрока 2: ${isOnPlayer2Base ? 'ДА' : 'НЕТ'}\n`;
+        info += `  Ворота: ${isGate ? 'ДА' : 'НЕТ'}\n`;
+        if (isGate) {
+            info += `    Ворота игрока 1: ${isGatePlayer1 ? 'ДА' : 'НЕТ'}\n`;
+            info += `    Ворота игрока 2: ${isGatePlayer2 ? 'ДА' : 'НЕТ'}\n`;
+        }
+        info += `\n`;
+        
+        info += `Блокировка:\n`;
+        info += `  Для солдат: ${isBlockedSoldier ? 'ЗАБЛОКИРОВАНА' : 'ДОСТУПНА'}\n`;
+        info += `  Для рабочих: ${isBlockedWorker ? 'ЗАБЛОКИРОВАНА' : 'ДОСТУПНА'}\n`;
+        info += `\n`;
+        
+        info += `Объекты на ячейке:\n`;
+        if (obstacle) {
+            info += `  Препятствие: ${obstacle.type} (прочность: ${obstacle.health})\n`;
+        } else {
+            info += `  Препятствие: нет\n`;
+        }
+        
+        if (tower) {
+            info += `  Башня: ${tower.type} (здоровье: ${tower.health}/${tower.maxHealth})\n`;
+        } else {
+            info += `  Башня: нет\n`;
+        }
+        
+        if (goldPile) {
+            info += `  Золото: ${goldPile.amount} единиц\n`;
+        } else {
+            info += `  Золото: нет\n`;
+        }
+        
+        if (soldiers.length > 0) {
+            info += `  Солдаты: ${soldiers.length}\n`;
+            soldiers.forEach((s, i) => {
+                info += `    ${i + 1}. ID: ${s.id}, тип: ${s.type}, игрок: ${s.playerId}, здоровье: ${s.health}/${s.maxHealth}\n`;
+            });
+        } else {
+            info += `  Солдаты: нет\n`;
+        }
+        
+        if (workers.length > 0) {
+            info += `  Рабочие: ${workers.length}\n`;
+            workers.forEach((w, i) => {
+                info += `    ${i + 1}. ID: ${w.id}, тип: ${w.type}, игрок: ${w.playerId}, здоровье: ${w.health}/${w.maxHealth}\n`;
+            });
+        } else {
+            info += `  Рабочие: нет\n`;
+        }
+        
+        debugInfoEl.textContent = info;
+    }
+
+    setupDebugTabs() {
+        const soldierTab = document.getElementById('debug-tab-soldiers');
+        const workerTab = document.getElementById('debug-tab-workers');
+        const cellTab = document.getElementById('debug-tab-cells');
+        const soldierInfo = document.getElementById('soldier-debug-info');
+        const workerInfo = document.getElementById('worker-debug-info');
+        const cellInfo = document.getElementById('cell-debug-info');
+        
+        if (!soldierTab || !workerTab || !cellTab || !soldierInfo || !workerInfo || !cellInfo) return;
+        
+        soldierTab.addEventListener('click', () => {
+            soldierTab.style.background = '#4a90e2';
+            workerTab.style.background = '#666';
+            cellTab.style.background = '#666';
+            soldierInfo.style.display = 'block';
+            workerInfo.style.display = 'none';
+            cellInfo.style.display = 'none';
+        });
+        
+        workerTab.addEventListener('click', () => {
+            soldierTab.style.background = '#666';
+            workerTab.style.background = '#4a90e2';
+            cellTab.style.background = '#666';
+            soldierInfo.style.display = 'none';
+            workerInfo.style.display = 'block';
+            cellInfo.style.display = 'none';
+        });
+        
+        cellTab.addEventListener('click', () => {
+            soldierTab.style.background = '#666';
+            workerTab.style.background = '#666';
+            cellTab.style.background = '#4a90e2';
+            soldierInfo.style.display = 'none';
+            workerInfo.style.display = 'none';
+            cellInfo.style.display = 'block';
+        });
+        
+        // Сохраняем ссылку на выбранную ячейку
+        this.selectedCellForDebug = null;
     }
 
     updateTestNeighborsInfo(selectedHex) {
