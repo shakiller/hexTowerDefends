@@ -127,6 +127,77 @@ export class Renderer {
         this.ctx.restore();
     }
 
+    // Вспомогательная функция для отрисовки индикатора здоровья с процентами
+    // Всегда рисуется горизонтально сверху объекта, независимо от поворота
+    drawHealthBar(pixelPos, health, maxHealth, size) {
+        this.ctx.save();
+        
+        // Сбрасываем все трансформации, чтобы полоска всегда была горизонтальной
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        // Вычисляем процент здоровья
+        const hpPercent = Math.max(0, Math.min(1, health / maxHealth));
+        const percentText = Math.round(hpPercent * 100) + '%';
+        
+        // Размеры полоски здоровья
+        const barWidth = size * 1.2; // Немного шире объекта
+        const barHeight = 5;
+        const barY = pixelPos.y - size / 2 - 12; // Выше объекта
+        
+        // Фон полоски здоровья
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(
+            pixelPos.x - barWidth / 2,
+            barY,
+            barWidth,
+            barHeight
+        );
+        
+        // Полоска здоровья
+        const healthColor = hpPercent > 0.5 ? '#4a90e2' : (hpPercent > 0.25 ? '#ffaa00' : '#e24a4a');
+        this.ctx.fillStyle = healthColor;
+        this.ctx.fillRect(
+            pixelPos.x - barWidth / 2,
+            barY,
+            barWidth * hpPercent,
+            barHeight
+        );
+        
+        // Рамка полоски
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(
+            pixelPos.x - barWidth / 2,
+            barY,
+            barWidth,
+            barHeight
+        );
+        
+        // Текст с процентом здоровья
+        this.ctx.fillStyle = 'white';
+        this.ctx.strokeStyle = 'black';
+        this.ctx.lineWidth = 2;
+        this.ctx.font = `bold ${Math.max(8, size * 0.25)}px Arial`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'top';
+        
+        // Обводка текста для лучшей читаемости
+        this.ctx.strokeText(percentText, pixelPos.x, barY + barHeight + 2);
+        this.ctx.fillText(percentText, pixelPos.x, barY + barHeight + 2);
+        
+        this.ctx.restore();
+    }
+
     drawTowers(towers, testTowersMode = false) {
         this.ctx.save();
         
@@ -242,35 +313,19 @@ export class Renderer {
                     size
                 );
             }
-            
-            // Отображение здоровья башни
-            if (tower.health < tower.maxHealth) {
-                const hpPercent = tower.health / tower.maxHealth;
-                const barWidth = size;
-                const barHeight = 4;
-                const barY = pixelPos.y - size / 2 - 8;
-                
-                // Фон полоски здоровья
-                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                this.ctx.fillRect(
-                    pixelPos.x - barWidth / 2,
-                    barY,
-                    barWidth,
-                    barHeight
-                );
-                
-                // Полоска здоровья
-                this.ctx.fillStyle = hpPercent > 0.5 ? '#4a90e2' : '#e24a4a';
-                this.ctx.fillRect(
-                    pixelPos.x - barWidth / 2,
-                    barY,
-                    barWidth * hpPercent,
-                    barHeight
-                );
-            }
         });
         
         this.ctx.restore();
+        
+        // Рисуем индикаторы здоровья после всех трансформаций
+        towers.forEach(tower => {
+            const hex = this.hexGrid.arrayToHex(tower.x, tower.y);
+            const pixelPos = this.hexGrid.hexToPixel(hex);
+            const isStrong = tower.type === 'strong';
+            const baseSize = this.hexGrid.hexSize * 0.6;
+            const size = isStrong ? baseSize * 1.3 : baseSize;
+            this.drawHealthBar(pixelPos, tower.health, tower.maxHealth, size);
+        });
     }
 
     drawGold(goldPiles) {
@@ -383,12 +438,10 @@ export class Renderer {
             this.ctx.fill();
         }
 
-        // HP bar
-        const hpPercent = worker.health / worker.maxHealth;
-        this.ctx.fillStyle = hpPercent > 0.5 ? '#4a90e2' : '#e24a4a';
-        this.ctx.fillRect(-size / 2, -size / 2 - 5, size * hpPercent, 3);
-
         this.ctx.restore();
+        
+        // Рисуем индикатор здоровья после всех трансформаций
+        this.drawHealthBar(pixelPos, worker.health, worker.maxHealth, size);
     }
 
     drawSoldiers(soldiers) {
@@ -456,7 +509,7 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    drawBases() {
+    drawBases(gameState) {
         this.ctx.save();
         
         // Применяем виртуальный скролл
@@ -472,24 +525,49 @@ export class Renderer {
         // База игрока 1 (внизу) - НОВАЯ строка (height - 1), только чётные ячейки
         // Если считать с 1: x=1,2,3... → чётные это x=2,4,6,8,10,12,14 (индексы 1,3,5... - нечётные индексы!)
         const player1BaseY = this.hexGrid.height - 1; // Новая строка (y = 51 при height = 52)
+        const player1BaseHexes = [];
         for (let x = 0; x < this.hexGrid.width; x++) {
             // Только чётные столбцы (считая с 1): x=2,4,6,8,10,12,14 (индексы 1,3,5,7,9,11,13)
             if (x % 2 === 1) { // Нечётный индекс = чётный столбец (считая с 1)
                 const hex = this.hexGrid.arrayToHex(x, player1BaseY);
                 // Более яркий цвет для лучшей видимости - это новый ряд ниже сетки
                 this.hexGrid.drawHex(this.ctx, hex, 'rgba(74, 144, 226, 0.9)', '#4a90e2');
+                player1BaseHexes.push(hex);
             }
         }
         
         // База игрока 2 (вверху) - верхняя строка по всей ширине
         const player2BaseY = 0; // Верхняя строка
+        const player2BaseHexes = [];
         for (let x = 0; x < this.hexGrid.width; x++) {
             const hex = this.hexGrid.arrayToHex(x, player2BaseY);
             // Более яркая заливка для лучшей видимости
             this.hexGrid.drawHex(this.ctx, hex, 'rgba(226, 74, 74, 0.7)', '#e24a4a');
+            player2BaseHexes.push(hex);
         }
         
         this.ctx.restore();
+        
+        // Рисуем индикаторы здоровья для баз после всех трансформаций
+        if (gameState && gameState.players) {
+            const maxBaseHealth = 100; // Максимальное здоровье базы
+            
+            // Индикатор здоровья базы игрока 1 (в центре базы)
+            if (player1BaseHexes.length > 0) {
+                const centerHex = player1BaseHexes[Math.floor(player1BaseHexes.length / 2)];
+                const pixelPos = this.hexGrid.hexToPixel(centerHex);
+                const baseHealth = gameState.players[1]?.baseHealth || maxBaseHealth;
+                this.drawHealthBar(pixelPos, baseHealth, maxBaseHealth, this.hexGrid.hexSize);
+            }
+            
+            // Индикатор здоровья базы игрока 2 (в центре базы)
+            if (player2BaseHexes.length > 0) {
+                const centerHex = player2BaseHexes[Math.floor(player2BaseHexes.length / 2)];
+                const pixelPos = this.hexGrid.hexToPixel(centerHex);
+                const baseHealth = gameState.players[2]?.baseHealth || maxBaseHealth;
+                this.drawHealthBar(pixelPos, baseHealth, maxBaseHealth, this.hexGrid.hexSize);
+            }
+        }
     }
     
     drawBaseIndices() {
@@ -592,18 +670,6 @@ export class Renderer {
         this.ctx.lineWidth = 4;
         this.hexGrid.drawHex(this.ctx, hex1, 'rgba(255, 255, 0, 0.2)', '#ffff00');
         
-        // Отображаем индексы ворот игрока 1
-        const pixelPos1 = this.hexGrid.hexToPixel(hex1);
-        const text1 = `${gateX},${player1GateY}`;
-        this.ctx.font = 'bold 14px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.strokeStyle = '#000000';
-        this.ctx.lineWidth = 3;
-        this.ctx.strokeText(text1, pixelPos1.x, pixelPos1.y);
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillText(text1, pixelPos1.x, pixelPos1.y);
-        
         // Ворота игрока 2 (вверху по центру) - x=центр, y=верх
         const player2GateY = 0; // Верхняя строка
         const hex2 = this.hexGrid.arrayToHex(centerX, player2GateY);
@@ -614,18 +680,105 @@ export class Renderer {
         this.ctx.lineWidth = 4;
         this.hexGrid.drawHex(this.ctx, hex2, 'rgba(255, 255, 0, 0.2)', '#ffff00');
         
-        // Отображаем индексы ворот игрока 2
-        const pixelPos2 = this.hexGrid.hexToPixel(hex2);
-        const text2 = `${centerX},${player2GateY}`;
-        this.ctx.font = 'bold 14px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.strokeStyle = '#000000';
-        this.ctx.lineWidth = 3;
-        this.ctx.strokeText(text2, pixelPos2.x, pixelPos2.y);
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillText(text2, pixelPos2.x, pixelPos2.y);
+        this.ctx.restore();
+    }
+
+    drawFlags(gameState, currentTime = 0) {
+        this.ctx.save();
         
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        const centerX = Math.floor(this.hexGrid.width / 2);
+        
+        // Флажок игрока 1 (внизу) - на центральной ячейке базы
+        const player1FlagX = centerX;
+        const player1FlagY = this.hexGrid.height - 1; // Последняя строка
+        const player1Hex = this.hexGrid.arrayToHex(player1FlagX, player1FlagY);
+        const player1PixelPos = this.hexGrid.hexToPixel(player1Hex);
+        
+        // Определяем состояние флажка игрока 1
+        const player1Won = gameState.gameState === 'victory' && gameState.winner === 1;
+        const player1Lost = gameState.gameState === 'victory' && gameState.winner === 2;
+        
+        this.drawFlag(player1PixelPos, 1, player1Won, player1Lost, currentTime);
+        
+        // Флажок игрока 2 (вверху) - на центральной ячейке базы
+        const player2FlagX = centerX;
+        const player2FlagY = 0; // Верхняя строка
+        const player2Hex = this.hexGrid.arrayToHex(player2FlagX, player2FlagY);
+        const player2PixelPos = this.hexGrid.hexToPixel(player2Hex);
+        
+        // Определяем состояние флажка игрока 2
+        const player2Won = gameState.gameState === 'victory' && gameState.winner === 2;
+        const player2Lost = gameState.gameState === 'victory' && gameState.winner === 1;
+        
+        this.drawFlag(player2PixelPos, 2, player2Won, player2Lost, currentTime);
+        
+        this.ctx.restore();
+    }
+
+    drawFlag(pixelPos, playerId, won, lost, currentTime) {
+        this.ctx.save();
+        this.ctx.translate(pixelPos.x, pixelPos.y);
+        
+        // Цвет флажка
+        const flagColor = playerId === 1 ? '#4a90e2' : '#e24a4a'; // Синий для игрока 1, красный для игрока 2
+        
+        // Длина флагштока
+        const poleLength = this.hexGrid.hexSize * 0.8;
+        const poleWidth = 3;
+        
+        // Рисуем флагшток
+        this.ctx.strokeStyle = '#8b4513'; // Коричневый
+        this.ctx.lineWidth = poleWidth;
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, 0);
+        this.ctx.lineTo(0, -poleLength);
+        this.ctx.stroke();
+        
+        // Определяем угол наклона флажка
+        let flagAngle = 0;
+        if (lost) {
+            // Поражение - флажок падает (наклон на 90 градусов)
+            flagAngle = Math.PI / 2;
+        } else if (won) {
+            // Победа - флажок машет (анимация)
+            const waveSpeed = 0.008; // Скорость махания
+            const waveAmplitude = Math.PI / 6; // Амплитуда махания (30 градусов)
+            flagAngle = Math.sin(currentTime * waveSpeed) * waveAmplitude;
+        }
+        
+        // Рисуем флажок
+        const flagWidth = this.hexGrid.hexSize * 0.4;
+        const flagHeight = this.hexGrid.hexSize * 0.3;
+        
+        this.ctx.save();
+        this.ctx.translate(0, -poleLength);
+        this.ctx.rotate(flagAngle);
+        
+        // Флаг
+        this.ctx.fillStyle = flagColor;
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, 0);
+        this.ctx.lineTo(flagWidth, flagHeight / 2);
+        this.ctx.lineTo(0, flagHeight);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Обводка флага
+        this.ctx.strokeStyle = '#000000';
+        this.ctx.lineWidth = 1;
+        this.ctx.stroke();
+        
+        this.ctx.restore();
         this.ctx.restore();
     }
 
@@ -685,20 +838,20 @@ export class Renderer {
                 this.ctx.arc(pixelPos.x, pixelPos.y, crownSize / 2, 0, Math.PI * 2);
                 this.ctx.fill();
                 
-                // Показываем здоровье дерева
-                if (obstacle.health < 100) {
-                    this.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
-                    this.ctx.fillRect(
-                        pixelPos.x - crownSize / 2,
-                        pixelPos.y - crownSize / 2 - 5,
-                        crownSize * (obstacle.health / 100),
-                        3
-                    );
-                }
             }
         });
         
         this.ctx.restore();
+        
+        // Рисуем индикаторы здоровья для деревьев после всех трансформаций
+        obstacles.forEach(obstacle => {
+            if (obstacle.type === 'tree' && obstacle.maxHealth !== Infinity) {
+                const hex = this.hexGrid.arrayToHex(obstacle.x, obstacle.y);
+                const pixelPos = this.hexGrid.hexToPixel(hex);
+                const crownSize = this.hexGrid.hexSize * 0.6;
+                this.drawHealthBar(pixelPos, obstacle.health, obstacle.maxHealth, crownSize);
+            }
+        });
     }
 
     drawHoverCell(hex) {
@@ -779,20 +932,11 @@ export class Renderer {
         this.ctx.closePath();
         this.ctx.fill();
         
-        // HP бар (рисуем до поворота, чтобы он всегда был горизонтальным)
         this.ctx.restore();
-        this.ctx.save();
-        this.ctx.translate(pixelPos.x, pixelPos.y);
-        const hpPercent = soldier.health / soldier.maxHealth;
-        this.ctx.fillStyle = hpPercent > 0.5 ? '#4a90e2' : '#e24a4a';
-        this.ctx.fillRect(
-            -size / 2,
-            -size / 2 - 5,
-            size * hpPercent,
-            3
-        );
         
         // Визуализация атаки солдата по башне
+        this.ctx.save();
+        this.ctx.translate(pixelPos.x, pixelPos.y);
         if (soldier.attackTarget) {
             const currentTime = performance.now();
             const timeSinceAttack = currentTime - soldier.attackTarget.time;
@@ -818,8 +962,10 @@ export class Renderer {
                 this.ctx.fill();
             }
         }
-        
         this.ctx.restore();
+        
+        // Рисуем индикатор здоровья после всех трансформаций
+        this.drawHealthBar(pixelPos, soldier.health, soldier.maxHealth, size);
     }
 
     drawTestNeighbors(selectedHex) {
@@ -882,11 +1028,12 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    render(gameState, towerState, soldierState, playerState, mousePosition = null, obstacleState = null, goldState = null, workerState = null) {
+    render(gameState, towerState, soldierState, playerState, mousePosition = null, obstacleState = null, goldState = null, workerState = null, currentTime = 0) {
         this.clear();
         this.drawGrid();
-        this.drawBases();
+        this.drawBases(gameState);
         this.drawGates();
+        this.drawFlags(gameState, currentTime);
         
         // Рисуем препятствия перед башнями и солдатами
         if (obstacleState && obstacleState.obstacles) {
@@ -926,8 +1073,8 @@ export class Renderer {
             this.drawTestNeighbors(playerState.testSelectedHex);
         }
         
-        // Отображаем индексы в самом конце, чтобы они точно были видны
-        this.drawBaseIndices();
+        // Индексы отключены
+        // this.drawBaseIndices();
     }
 
     drawPlacementPreview(gameState, playerState, towerState, obstacleState = null) {

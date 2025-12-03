@@ -1301,37 +1301,87 @@ class Game {
             }
             
             // Ищем ближайшего свободного строителя
-            const builders = this.workerBloc.getState().workers.filter(w => 
-                w.playerId === currentPlayer && 
-                w.type === 'builder' && 
-                !w.buildingTarget
-            );
-            
-            if (builders.length > 0) {
-                // Находим ближайшего строителя
-                let closestBuilder = null;
-                let minDistance = Infinity;
-                
-                builders.forEach(builder => {
-                    const builderHex = this.hexGrid.arrayToHex(builder.x, builder.y);
-                    const targetHex = this.hexGrid.arrayToHex(arrHex.x, arrHex.y);
-                    const distance = this.hexGrid.hexDistance(builderHex, targetHex);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestBuilder = builder;
-                    }
+            const allWorkers = this.workerBloc.getState().workers;
+            console.log('=== ПОИСК СТРОИТЕЛЕЙ ===');
+            console.log('Всего рабочих:', allWorkers.length);
+            console.log('Текущий игрок:', currentPlayer);
+            allWorkers.forEach((w, idx) => {
+                console.log(`Рабочий [${idx}]:`, {
+                    id: w.id,
+                    playerId: w.playerId,
+                    type: w.type,
+                    buildingTarget: w.buildingTarget,
+                    x: w.x,
+                    y: w.y,
+                    matchesPlayer: w.playerId === currentPlayer,
+                    matchesType: w.type === 'builder',
+                    hasNoTarget: !w.buildingTarget,
+                    passesFilter: w.playerId === currentPlayer && w.type === 'builder' && !w.buildingTarget
                 });
+            });
+            
+            const builders = allWorkers.filter(w => {
+                // Проверяем все условия по отдельности для отладки
+                const isCorrectPlayer = w.playerId === currentPlayer;
+                const isBuilder = w.type === 'builder';
+                // Более строгая проверка: buildingTarget должен быть null или undefined
+                const hasNoTarget = w.buildingTarget === null || w.buildingTarget === undefined;
                 
-                if (closestBuilder) {
-                    // Даём задание строителю
-                    this.workerBloc.assignBuildTask(closestBuilder.id, arrHex.x, arrHex.y, playerState.selectedObstacleType);
-                    this.playerBloc.clearSelection();
-                    return;
+                const matches = isCorrectPlayer && isBuilder && hasNoTarget;
+                
+                // Логируем только строителей текущего игрока для отладки
+                if (w.type === 'builder') {
+                    console.log(`Строитель ${w.id} (игрок ${w.playerId}):`, {
+                        isCorrectPlayer,
+                        isBuilder,
+                        hasNoTarget,
+                        buildingTarget: w.buildingTarget,
+                        buildingTargetType: typeof w.buildingTarget,
+                        buildingTargetIsNull: w.buildingTarget === null,
+                        buildingTargetIsUndefined: w.buildingTarget === undefined,
+                        currentPlayer,
+                        workerPlayerId: w.playerId,
+                        passesFilter: matches
+                    });
                 }
+                
+                return matches;
+            });
+            
+            console.log('Найдено свободных строителей:', builders.length);
+            
+            if (builders.length === 0) {
+                // Нет свободных строителей - показываем сообщение
+                console.log('Нет свободных строителей! Создайте строителя для размещения препятствий.');
+                alert('Нет свободных строителей!\n\nСоздайте строителя через панель "Рабочие" для размещения препятствий.');
+                this.playerBloc.clearSelection();
+                return;
             }
             
-            // Если нет свободных строителей - размещаем препятствие напрямую (как раньше)
-            this.obstacleBloc.addObstacle(arrHex.x, arrHex.y, playerState.selectedObstacleType);
+            // Находим ближайшего строителя
+            let closestBuilder = null;
+            let minDistance = Infinity;
+            
+            builders.forEach(builder => {
+                const builderHex = this.hexGrid.arrayToHex(builder.x, builder.y);
+                const targetHex = this.hexGrid.arrayToHex(arrHex.x, arrHex.y);
+                const distance = this.hexGrid.hexDistance(builderHex, targetHex);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestBuilder = builder;
+                }
+            });
+            
+            if (closestBuilder) {
+                // Даём задание строителю
+                console.log(`Строитель ${closestBuilder.id} получил задание построить ${playerState.selectedObstacleType} в (${arrHex.x}, ${arrHex.y})`);
+                this.workerBloc.assignBuildTask(closestBuilder.id, arrHex.x, arrHex.y, playerState.selectedObstacleType);
+                this.playerBloc.clearSelection();
+                return;
+            }
+            
+            // Если по какой-то причине не удалось найти строителя
+            console.log('Не удалось найти строителя для размещения препятствия');
             this.playerBloc.clearSelection();
             return;
         }
@@ -1827,7 +1877,8 @@ class Game {
         
         const goldState = this.goldBloc.getState();
         const workerState = this.workerBloc.getState();
-        this.renderer.render(gameState, towerState, soldierState, playerState, this.mousePosition, obstacleState, goldState, workerState);
+        const currentTime = performance.now();
+        this.renderer.render(gameState, towerState, soldierState, playerState, this.mousePosition, obstacleState, goldState, workerState, currentTime);
     }
 }
 
