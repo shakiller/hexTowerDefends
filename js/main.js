@@ -33,6 +33,9 @@ class Game {
         this.isRunning = false;
         this.wasDragForClick = false; // Инициализация флага для проверки drag
         
+        // Настройка визуальной отладки
+        this.setupVisualDebug();
+        
         // Отладка: отслеживание позиции мыши
         this.mousePosition = null;
         this.mouseHistory = []; // История позиций мыши для шлейфа
@@ -1268,6 +1271,13 @@ class Game {
 
         // Размещение препятствия
         if (playerState.selectedObstacleType) {
+            let obstacleInfo = '=== РАЗМЕЩЕНИЕ ПРЕПЯТСТВИЯ ===\n';
+            obstacleInfo += `Тип препятствия: ${playerState.selectedObstacleType}\n`;
+            obstacleInfo += `Позиция: x=${arrHex.x}, y=${arrHex.y}\n`;
+            obstacleInfo += `Текущий игрок: ${currentPlayer}\n`;
+            obstacleInfo += `Режим игры: ${gameState.gameMode}\n\n`;
+            this.showDebugMessage(obstacleInfo);
+            
             // Нельзя ставить препятствия на базах
             // База игрока 2 (вверху) - вся верхняя строка (y === 0)
             // База игрока 1 (внизу) - последняя строка (y === height - 1, только чётные ячейки)
@@ -1302,22 +1312,23 @@ class Game {
             
             // Ищем ближайшего свободного строителя
             const allWorkers = this.workerBloc.getState().workers;
-            console.log('=== ПОИСК СТРОИТЕЛЕЙ ===');
-            console.log('Всего рабочих:', allWorkers.length);
-            console.log('Текущий игрок:', currentPlayer);
+            let debugInfo = '=== ПОИСК СТРОИТЕЛЕЙ ===\n';
+            debugInfo += `Всего рабочих: ${allWorkers.length}\n`;
+            debugInfo += `Текущий игрок: ${currentPlayer}\n\n`;
+            
             allWorkers.forEach((w, idx) => {
-                console.log(`Рабочий [${idx}]:`, {
-                    id: w.id,
-                    playerId: w.playerId,
-                    type: w.type,
-                    buildingTarget: w.buildingTarget,
-                    x: w.x,
-                    y: w.y,
-                    matchesPlayer: w.playerId === currentPlayer,
-                    matchesType: w.type === 'builder',
-                    hasNoTarget: !w.buildingTarget,
-                    passesFilter: w.playerId === currentPlayer && w.type === 'builder' && !w.buildingTarget
-                });
+                const matchesPlayer = w.playerId === currentPlayer;
+                const matchesType = w.type === 'builder';
+                const hasNoTarget = !w.buildingTarget;
+                const passesFilter = matchesPlayer && matchesType && hasNoTarget;
+                
+                debugInfo += `Рабочий [${idx}]: ID=${w.id}, P=${w.playerId}, T=${w.type}\n`;
+                debugInfo += `  Позиция: x=${w.x}, y=${w.y}\n`;
+                debugInfo += `  buildingTarget: ${w.buildingTarget ? JSON.stringify(w.buildingTarget) : 'нет'}\n`;
+                debugInfo += `  Совпадает игрок: ${matchesPlayer}\n`;
+                debugInfo += `  Тип builder: ${matchesType}\n`;
+                debugInfo += `  Нет задачи: ${hasNoTarget}\n`;
+                debugInfo += `  Проходит фильтр: ${passesFilter}\n\n`;
             });
             
             const builders = allWorkers.filter(w => {
@@ -1329,31 +1340,52 @@ class Game {
                 
                 const matches = isCorrectPlayer && isBuilder && hasNoTarget;
                 
-                // Логируем только строителей текущего игрока для отладки
                 if (w.type === 'builder') {
-                    console.log(`Строитель ${w.id} (игрок ${w.playerId}):`, {
-                        isCorrectPlayer,
-                        isBuilder,
-                        hasNoTarget,
-                        buildingTarget: w.buildingTarget,
-                        buildingTargetType: typeof w.buildingTarget,
-                        buildingTargetIsNull: w.buildingTarget === null,
-                        buildingTargetIsUndefined: w.buildingTarget === undefined,
-                        currentPlayer,
-                        workerPlayerId: w.playerId,
-                        passesFilter: matches
-                    });
+                    debugInfo += `Строитель ${w.id} (игрок ${w.playerId}):\n`;
+                    debugInfo += `  Совпадает игрок: ${isCorrectPlayer}\n`;
+                    debugInfo += `  Тип builder: ${isBuilder}\n`;
+                    debugInfo += `  Нет задачи: ${hasNoTarget}\n`;
+                    debugInfo += `  buildingTarget: ${w.buildingTarget} (тип: ${typeof w.buildingTarget})\n`;
+                    debugInfo += `  Проходит фильтр: ${matches}\n\n`;
                 }
                 
                 return matches;
             });
             
-            console.log('Найдено свободных строителей:', builders.length);
+            debugInfo += `Найдено свободных строителей: ${builders.length}\n`;
+            this.showDebugMessage(debugInfo);
             
             if (builders.length === 0) {
-                // Нет свободных строителей - показываем сообщение
-                console.log('Нет свободных строителей! Создайте строителя для размещения препятствий.');
-                alert('Нет свободных строителей!\n\nСоздайте строителя через панель "Рабочие" для размещения препятствий.');
+                // Нет свободных строителей - проверяем, есть ли строители вообще
+                const buildersForPlayer = allWorkers.filter(w => 
+                    w.playerId === currentPlayer && 
+                    w.type === 'builder'
+                );
+                
+                if (buildersForPlayer.length === 0) {
+                    // Нет строителей вообще - показываем ошибку
+                    let errorMsg = 'Нет строителей!\n\n';
+                    errorMsg += `Текущий игрок: ${currentPlayer}\n`;
+                    errorMsg += `Всего рабочих: ${allWorkers.length}\n\n`;
+                    errorMsg += 'Создайте строителя через панель "Рабочие" для размещения препятствий.';
+                    this.showDebugMessage(errorMsg);
+                    alert('Нет строителей!\n\nСоздайте строителя через панель "Рабочие" для размещения препятствий.');
+                    this.playerBloc.clearSelection();
+                    return;
+                }
+                
+                // Есть строители, но все заняты - добавляем в очередь
+                this.workerBloc.addBuildTaskToQueue(currentPlayer, arrHex.x, arrHex.y, playerState.selectedObstacleType);
+                
+                // Обновляем отображение очереди
+                this.updateBuildQueueDisplay();
+                
+                // Показываем сообщение о добавлении в очередь
+                const obstacleTypeName = playerState.selectedObstacleType === 'stone' ? 'Камень' : 'Дерево';
+                const queueSize = this.workerBloc.getBuildQueue(currentPlayer).length;
+                const message = `Задача добавлена в очередь!\n\n${obstacleTypeName} (${arrHex.x}, ${arrHex.y})\n\nПозиция в очереди: ${queueSize}`;
+                this.showDebugMessage(message);
+                
                 this.playerBloc.clearSelection();
                 return;
             }
@@ -1374,14 +1406,40 @@ class Game {
             
             if (closestBuilder) {
                 // Даём задание строителю
-                console.log(`Строитель ${closestBuilder.id} получил задание построить ${playerState.selectedObstacleType} в (${arrHex.x}, ${arrHex.y})`);
-                this.workerBloc.assignBuildTask(closestBuilder.id, arrHex.x, arrHex.y, playerState.selectedObstacleType);
+                let taskInfo = '=== НАЗНАЧЕНИЕ ЗАДАЧИ СТРОИТЕЛЮ ===\n';
+                taskInfo += `Строитель ID: ${closestBuilder.id}\n`;
+                taskInfo += `Позиция строителя: x=${closestBuilder.x}, y=${closestBuilder.y}\n`;
+                taskInfo += `Целевая позиция: x=${arrHex.x}, y=${arrHex.y}\n`;
+                taskInfo += `Тип препятствия: ${playerState.selectedObstacleType}\n\n`;
+                
+                const taskAssigned = this.workerBloc.assignBuildTask(closestBuilder.id, arrHex.x, arrHex.y, playerState.selectedObstacleType);
+                taskInfo += `Результат назначения: ${taskAssigned ? 'УСПЕХ' : 'ОШИБКА'}\n\n`;
+                
+                if (taskAssigned) {
+                    // Проверяем, что задача действительно назначена
+                    const workerAfter = this.workerBloc.getState().workers.find(w => w.id === closestBuilder.id);
+                    if (workerAfter) {
+                        taskInfo += `Состояние после назначения:\n`;
+                        taskInfo += `  ID: ${workerAfter.id}\n`;
+                        taskInfo += `  buildingTarget: ${workerAfter.buildingTarget ? JSON.stringify(workerAfter.buildingTarget) : 'нет'}\n`;
+                        taskInfo += `  targetX: ${workerAfter.targetX}\n`;
+                        taskInfo += `  targetY: ${workerAfter.targetY}\n`;
+                    }
+                    taskInfo += '\n✅ Задача успешно назначена строителю!';
+                } else {
+                    taskInfo += '❌ Не удалось назначить задачу строителю!';
+                    alert('Ошибка: не удалось назначить задачу строителю.');
+                }
+                
+                this.showDebugMessage(taskInfo);
                 this.playerBloc.clearSelection();
                 return;
             }
             
             // Если по какой-то причине не удалось найти строителя
-            console.log('Не удалось найти строителя для размещения препятствия');
+            let errorInfo = '❌ Не удалось найти строителя\n\n';
+            errorInfo += `Найдено строителей: ${builders.length}\n`;
+            this.showDebugMessage(errorInfo);
             this.playerBloc.clearSelection();
             return;
         }
@@ -1487,6 +1545,9 @@ class Game {
         this.updateSoldierDebugInfo();
         this.updateWorkerDebugInfo();
         this.updateCellDebugInfo();
+        
+        // Обновление панели очереди строительства
+        this.updateBuildQueueDisplay();
         
         // Обновление информации о тестировании соседей
         if (playerState.testNeighborsMode && playerState.testSelectedHex) {
@@ -1633,13 +1694,63 @@ class Game {
                         info += `  Цель: x=${worker.targetX} y=${worker.targetY}\n`;
                     }
                 } else if (worker.type === 'builder') {
+                    // Определяем состояние строителя
+                    const centerX = Math.floor(this.hexGrid.width / 2);
+                    const baseY = worker.playerId === 1 ? this.hexGrid.height - 1 : 0;
+                    const isOnBase = worker.x === centerX && worker.y === baseY;
+                    
+                    let state = 'Неизвестно';
+                    if (worker.buildingTarget) {
+                        const target = worker.buildingTarget;
+                        const isOnTarget = worker.x === target.x && worker.y === target.y;
+                        if (isOnTarget) {
+                            state = '🔨 СТРОИТ';
+                        } else {
+                            state = '🚶 ИДЁТ К ЦЕЛИ';
+                        }
+                    } else if (isOnBase) {
+                        state = '✅ СВОБОДЕН (на базе)';
+                    } else if (worker.targetX === centerX && worker.targetY === baseY) {
+                        state = '🏠 ВОЗВРАТ НА БАЗУ';
+                    } else {
+                        state = '❓ НЕИЗВЕСТНОЕ СОСТОЯНИЕ';
+                    }
+                    
+                    info += `  Состояние: ${state}\n`;
                     info += `  Задача строительства: ${worker.buildingTarget ? `${worker.buildingTarget.type} на (${worker.buildingTarget.x},${worker.buildingTarget.y})` : 'нет'}\n`;
                     if (worker.targetX !== null && worker.targetY !== null) {
                         info += `  Цель: x=${worker.targetX} y=${worker.targetY}\n`;
                     }
+                    info += `  Путь: ${worker.path ? `${worker.path.length} ячеек, индекс: ${worker.currentHexIndex.toFixed(2)}` : 'нет'}\n`;
+                    info += `  Прогресс движения: ${(worker.moveProgress * 100).toFixed(1)}%\n`;
                 }
                 info += `\n`;
             });
+            
+            // Показываем информацию об очереди задач
+            const queueInfo = this.workerBloc.getBuildQueueInfo();
+            if (queueInfo[1] > 0 || queueInfo[2] > 0) {
+                info += `=== ОЧЕРЕДЬ ЗАДАЧ ===\n`;
+                info += `Игрок 1: ${queueInfo[1]} задач\n`;
+                info += `Игрок 2: ${queueInfo[2]} задач\n`;
+                
+                // Показываем детали очереди для игрока 1
+                if (queueInfo[1] > 0) {
+                    const queue1 = this.workerBloc.getBuildQueue(1);
+                    queue1.forEach((task, idx) => {
+                        info += `  [1] ${idx + 1}. ${task.type} на (${task.x}, ${task.y})\n`;
+                    });
+                }
+                
+                // Показываем детали очереди для игрока 2
+                if (queueInfo[2] > 0) {
+                    const queue2 = this.workerBloc.getBuildQueue(2);
+                    queue2.forEach((task, idx) => {
+                        info += `  [2] ${idx + 1}. ${task.type} на (${task.x}, ${task.y})\n`;
+                    });
+                }
+                info += `\n`;
+            }
         }
         
         debugInfoEl.textContent = info;
@@ -1754,6 +1865,42 @@ class Game {
         }
         
         debugInfoEl.textContent = info;
+    }
+
+    setupVisualDebug() {
+        const closeBtn = document.getElementById('close-debug-message');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                const debugMsg = document.getElementById('debug-message');
+                if (debugMsg) {
+                    debugMsg.style.display = 'none';
+                }
+            });
+        }
+        
+        // Обработчик для кнопки закрытия панели очереди
+        const closeQueueBtn = document.getElementById('close-build-queue');
+        if (closeQueueBtn) {
+            closeQueueBtn.addEventListener('click', () => {
+                const queuePanel = document.getElementById('build-queue-panel');
+                if (queuePanel) {
+                    queuePanel.style.display = 'none';
+                }
+            });
+        }
+    }
+    
+    showDebugMessage(message) {
+        const debugMsg = document.getElementById('debug-message');
+        const debugContent = document.getElementById('debug-message-content');
+        if (debugMsg && debugContent) {
+            debugContent.textContent = message;
+            debugMsg.style.display = 'block';
+            // Автоматически скрываем через 10 секунд
+            setTimeout(() => {
+                debugMsg.style.display = 'none';
+            }, 10000);
+        }
     }
 
     setupDebugTabs() {
@@ -1879,6 +2026,140 @@ class Game {
         const workerState = this.workerBloc.getState();
         const currentTime = performance.now();
         this.renderer.render(gameState, towerState, soldierState, playerState, this.mousePosition, obstacleState, goldState, workerState, currentTime);
+    }
+    
+    updateBuildQueueDisplay() {
+        const queuePanel = document.getElementById('build-queue-panel');
+        const queueContent = document.getElementById('build-queue-content');
+        if (!queuePanel || !queueContent) return;
+        
+        const workers = this.workerBloc.getState().workers;
+        const buildQueue = {
+            1: this.workerBloc.getBuildQueue(1),
+            2: this.workerBloc.getBuildQueue(2)
+        };
+        
+        // Проверяем, есть ли задачи в очереди или выполняются ли задачи
+        const hasQueue1 = buildQueue[1].length > 0;
+        const hasQueue2 = buildQueue[2].length > 0;
+        const hasActiveBuilders = workers.some(w => w.type === 'builder' && w.buildingTarget);
+        
+        // Показываем панель, если есть задачи в очереди или активные строители
+        if (hasQueue1 || hasQueue2 || hasActiveBuilders) {
+            queuePanel.style.display = 'block';
+        } else {
+            queuePanel.style.display = 'none';
+            return;
+        }
+        
+        let html = '';
+        
+        // Обрабатываем каждого игрока
+        for (let playerId = 1; playerId <= 2; playerId++) {
+            const queue = buildQueue[playerId];
+            const playerBuilders = workers.filter(w => w.playerId === playerId && w.type === 'builder');
+            const activeBuilders = playerBuilders.filter(w => w.buildingTarget);
+            
+            if (queue.length > 0 || activeBuilders.length > 0) {
+                html += `<div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #555;">`;
+                html += `<strong style="color: ${playerId === 1 ? '#4a90e2' : '#e24a4a'}; font-size: 1.1em;">Игрок ${playerId}</strong><br>`;
+                
+                // Показываем активные задачи (выполняемые строителями)
+                if (activeBuilders.length > 0) {
+                    html += `<div style="margin-top: 8px; margin-bottom: 8px;">`;
+                    html += `<strong style="color: #4a90e2;">Выполняются:</strong><br>`;
+                    activeBuilders.forEach(builder => {
+                        const task = builder.buildingTarget;
+                        const taskTypeName = task.type === 'stone' ? 'Камень' : task.type === 'tree' ? 'Дерево' : task.type;
+                        const state = this.getBuilderState(builder);
+                        html += `<div style="margin-left: 10px; margin-top: 5px; padding: 5px; background: rgba(74, 144, 226, 0.2); border-radius: 4px;">`;
+                        html += `🔨 <strong>Строитель #${builder.id}</strong><br>`;
+                        html += `   Задача: ${taskTypeName} (${task.x}, ${task.y})<br>`;
+                        html += `   Состояние: <span style="color: #4a90e2;">${state}</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                
+                // Показываем очередь ожидающих задач
+                if (queue.length > 0) {
+                    html += `<div style="margin-top: 8px;">`;
+                    html += `<strong style="color: #ffa500;">В очереди (${queue.length}):</strong><br>`;
+                    queue.forEach((task, index) => {
+                        const taskTypeName = task.type === 'stone' ? 'Камень' : task.type === 'tree' ? 'Дерево' : task.type;
+                        html += `<div style="margin-left: 10px; margin-top: 5px; padding: 5px; background: rgba(255, 165, 0, 0.2); border-radius: 4px;">`;
+                        html += `${index + 1}. ${taskTypeName} (${task.x}, ${task.y})`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                } else if (activeBuilders.length === 0) {
+                    html += `<div style="margin-top: 8px; color: #888; font-style: italic;">Очередь пуста</div>`;
+                }
+                
+                html += `</div>`;
+            }
+        }
+        
+        if (!html) {
+            html = '<div style="color: #888; font-style: italic;">Очередь пуста</div>';
+        }
+        
+        queueContent.innerHTML = html;
+    }
+    
+    getBuilderState(builder) {
+        if (!builder.buildingTarget) {
+            // Проверяем, на базе ли строитель
+            const currentHex = this.hexGrid.arrayToHex(builder.x, builder.y);
+            const currentArr = this.hexGrid.hexToArray(currentHex);
+            const centerX = Math.floor(this.hexGrid.width / 2);
+            const baseY = builder.playerId === 1 ? this.hexGrid.height - 1 : 0;
+            const isAtBase = currentArr.x === centerX && currentArr.y === baseY;
+            return isAtBase ? 'СВОБОДЕН (на базе)' : 'СВОБОДЕН';
+        }
+        
+        const target = builder.buildingTarget;
+        const currentHex = this.hexGrid.arrayToHex(builder.x, builder.y);
+        const currentArr = this.hexGrid.hexToArray(currentHex);
+        const centerX = Math.floor(this.hexGrid.width / 2);
+        const baseY = builder.playerId === 1 ? this.hexGrid.height - 1 : 0;
+        
+        // Проверяем, достиг ли цели
+        const isAtTarget = currentArr.x === target.x && currentArr.y === target.y;
+        
+        if (isAtTarget) {
+            // На месте строительства
+            // Проверяем, есть ли путь обратно на базу (значит строительство завершено)
+            if (builder.path && builder.path.length > 0) {
+                const lastPathHex = builder.path[builder.path.length - 1];
+                const lastPathArr = this.hexGrid.hexToArray(lastPathHex);
+                const isReturning = lastPathArr.x === centerX && lastPathArr.y === baseY;
+                if (isReturning) {
+                    return 'ВОЗВРАТ НА БАЗУ';
+                }
+            }
+            // Если на цели, но нет пути на базу - строим
+            if (builder.buildingProgress !== undefined && builder.buildingProgress < 1) {
+                const progress = Math.floor(builder.buildingProgress * 100);
+                return `СТРОИТ (${progress}%)`;
+            }
+            // Если buildingProgress не установлен, но мы на цели - строим
+            return 'СТРОИТ';
+        }
+        
+        // Проверяем, возвращается ли на базу (по пути)
+        if (builder.path && builder.path.length > 0) {
+            const lastPathHex = builder.path[builder.path.length - 1];
+            const lastPathArr = this.hexGrid.hexToArray(lastPathHex);
+            const isReturning = lastPathArr.x === centerX && lastPathArr.y === baseY;
+            
+            if (isReturning && !isAtTarget) {
+                return 'ВОЗВРАТ НА БАЗУ';
+            }
+        }
+        
+        // Идёт к цели
+        return 'ИДЁТ К ЦЕЛИ';
     }
 }
 
