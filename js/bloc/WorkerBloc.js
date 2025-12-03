@@ -305,6 +305,20 @@ export class WorkerBloc {
                 worker.targetX = null;
                 worker.targetY = null;
             } else {
+                // Проверяем, не находится ли золото на базе (заблокировано для рабочих)
+                const goldHex = hexGrid.arrayToHex(goldPile.x, goldPile.y);
+                const isBlocked = hexGrid.isBlocked(goldHex, obstacleBloc, towerBloc, false); // allowGates = false для проверки базы
+                
+                if (isBlocked) {
+                    // Золото на базе - отменяем задачу
+                    console.warn(`[Gatherer ${worker.id}] Золото на базе (${goldPile.x}, ${goldPile.y}) - отменяем задачу`);
+                    worker.targetGoldId = null;
+                    worker.path = null;
+                    worker.targetX = null;
+                    worker.targetY = null;
+                    this.emit();
+                    return;
+                }
                 const goldArr = { x: goldPile.x, y: goldPile.y };
                 // Проверяем, находится ли рабочий в той же клетке, что и золото
                 const isOnSameCell = currentArr.x === goldArr.x && currentArr.y === goldArr.y;
@@ -346,7 +360,15 @@ export class WorkerBloc {
             let minDistance = Infinity;
 
             goldPiles.forEach(pile => {
+                // Проверяем, не находится ли золото на базе (заблокировано для рабочих)
                 const pileHex = hexGrid.arrayToHex(pile.x, pile.y);
+                const isBlocked = hexGrid.isBlocked(pileHex, obstacleBloc, towerBloc, false); // allowGates = false для проверки базы
+                
+                // Пропускаем золото на базе (кроме ворот, но ворота не должны иметь золота)
+                if (isBlocked) {
+                    return; // Пропускаем это золото
+                }
+                
                 const distance = hexGrid.hexDistance(currentHex, pileHex);
                 if (distance < minDistance) {
                     minDistance = distance;

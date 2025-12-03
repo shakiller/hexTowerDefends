@@ -43,9 +43,13 @@ export class GoldBloc {
                 return false;
             }
             
-            // Проверяем покрашенную зону базы игрока 1 (нижняя строка y === height - 1, только нечётные индексы x)
-            // Чётные столбцы (считая с 1): x=2,4,6,8,10,12,14 → индексы 1,3,5,7,9,11,13 (нечётные)
-            if (y === this.hexGrid.height - 1 && x % 2 === 1) {
+            // Проверяем покрашенную зону базы игрока 1
+            // База игрока 1 состоит из двух строк:
+            // 1. Предпоследняя строка (y === height - 2) с чётными индексами x (x % 2 === 0)
+            // 2. Последняя строка (y === height - 1) с нечётными индексами x (x % 2 === 1)
+            const isOnPlayer1BaseRow1 = y === this.hexGrid.height - 2 && x % 2 === 0; // Предпоследняя строка, чётные x
+            const isOnPlayer1BaseRow2 = y === this.hexGrid.height - 1 && x % 2 === 1; // Последняя строка, нечётные x
+            if (isOnPlayer1BaseRow1 || isOnPlayer1BaseRow2) {
                 return false; // Покрашенная зона базы игрока 1
             }
             
@@ -126,6 +130,35 @@ export class GoldBloc {
 
         this.emit();
         return collected;
+    }
+
+    /**
+     * Удаляет золото с базы (если оно там есть по ошибке)
+     */
+    removeGoldFromBase(obstacleBloc, towerBloc) {
+        const centerX = Math.floor(this.hexGrid.width / 2);
+        let removed = false;
+        
+        this.state.goldPiles = this.state.goldPiles.filter(pile => {
+            if (pile.collected) return true; // Уже собрано
+            
+            const pileHex = this.hexGrid.arrayToHex(pile.x, pile.y);
+            // Проверяем, находится ли золото на базе (заблокировано для рабочих)
+            const isBlocked = this.hexGrid.isBlocked(pileHex, obstacleBloc, towerBloc, false);
+            
+            if (isBlocked) {
+                console.warn(`Удаляем золото с базы: (${pile.x}, ${pile.y}), количество: ${pile.amount}`);
+                removed = true;
+                return false; // Удаляем это золото
+            }
+            return true;
+        });
+        
+        if (removed) {
+            this.emit();
+        }
+        
+        return removed;
     }
 
     getState() {

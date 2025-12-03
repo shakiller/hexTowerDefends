@@ -32,6 +32,7 @@ class Game {
         this.lastTime = 0;
         this.isRunning = false;
         this.wasDragForClick = false; // Инициализация флага для проверки drag
+        this.lastGoldBaseCheck = 0; // Время последней проверки золота на базе
         
         // Настройка визуальной отладки
         this.setupVisualDebug();
@@ -945,6 +946,8 @@ class Game {
         
         // Генерируем золото на поле (одинаковое количество на обеих половинах)
         this.goldBloc.generateGold(50, 10); // 50 золота в каждой куче, 10 куч на каждую половину
+        // Удаляем золото с базы (если оно там есть по ошибке)
+        this.goldBloc.removeGoldFromBase(this.obstacleBloc, this.towerBloc);
         
         // Препятствия теперь устанавливаются вручную через UI (отключена автоматическая генерация)
         
@@ -1536,6 +1539,12 @@ class Game {
             
             // Обновление рабочих
             this.workerBloc.updateWorkers(deltaTime, currentTime, this.goldBloc, this.obstacleBloc, this.towerBloc, this.hexGrid);
+            
+            // Периодически проверяем и удаляем золото с базы (раз в 5 секунд)
+            if (!this.lastGoldBaseCheck || currentTime - this.lastGoldBaseCheck > 5000) {
+                this.goldBloc.removeGoldFromBase(this.obstacleBloc, this.towerBloc);
+                this.lastGoldBaseCheck = currentTime;
+            }
             
             // Обновление бота
             this.botAI.update(currentTime);
