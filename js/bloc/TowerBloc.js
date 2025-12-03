@@ -233,7 +233,7 @@ export class TowerBloc {
         return { ...this.state };
     }
 
-    updateTowers(currentTime, soldiers, hexGrid, mouseHex = null) {
+    updateTowers(currentTime, soldiers, hexGrid, mouseHex = null, workers = []) {
         // Обновляем башни и их стрельбу
         this.state.towers.forEach(tower => {
             // Обновляем fireRate, range и damage из текущих настроек
@@ -308,11 +308,13 @@ export class TowerBloc {
                 return;
             }
             
-            // Обычный режим: находим ближайшего вражеского солдата в радиусе (используя логику соседей)
+            // Обычный режим: находим ближайшего вражеского солдата или рабочего в радиусе
             const towerHex = hexGrid.arrayToHex(tower.x, tower.y);
-            let closestSoldier = null;
+            let closestTarget = null;
             let minDistance = Infinity;
+            let isWorker = false;
             
+            // Проверяем солдат
             soldiers.forEach(soldier => {
                 if (soldier.playerId === tower.playerId) return; // Не стреляем по своим
                 
@@ -323,18 +325,39 @@ export class TowerBloc {
                     const distance = hexGrid.hexDistance(towerHex, soldierHex);
                     if (distance < minDistance) {
                         minDistance = distance;
-                        closestSoldier = soldier;
+                        closestTarget = soldier;
+                        isWorker = false;
                     }
                 }
             });
             
-            if (closestSoldier) {
+            // Проверяем рабочих
+            workers.forEach(worker => {
+                if (worker.playerId === tower.playerId) return; // Не стреляем по своим
+                
+                const workerHex = hexGrid.arrayToHex(worker.x, worker.y);
+                
+                // Используем логику соседей для проверки радиуса
+                if (hexGrid.isInRange(towerHex, workerHex, tower.range)) {
+                    const distance = hexGrid.hexDistance(towerHex, workerHex);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestTarget = worker;
+                        isWorker = true;
+                    }
+                }
+            });
+            
+            if (closestTarget) {
                 // Стреляем по солдату
                 tower.lastShotTime = currentTime;
                 
-                // Для большой башни - зона поражения (все солдаты в целевой клетке получают урон)
+                const targetX = closestTarget.x;
+                const targetY = closestTarget.y;
+                
+                // Для большой башни - зона поражения (все солдаты и рабочие в целевой клетке получают урон)
                 if (tower.type === 'strong') {
-                    const targetHex = hexGrid.arrayToHex(closestSoldier.x, closestSoldier.y);
+                    const targetHex = hexGrid.arrayToHex(targetX, targetY);
                     const targetArr = hexGrid.hexToArray(targetHex);
                     
                     // Находим всех солдат в целевой клетке
@@ -347,21 +370,31 @@ export class TowerBloc {
                         }
                     });
                     
+                    // Находим всех рабочих в целевой клетке
+                    workers.forEach(worker => {
+                        if (worker.playerId === tower.playerId) return; // Не стреляем по своим
+                        
+                        const workerArr = hexGrid.hexToArray(hexGrid.arrayToHex(worker.x, worker.y));
+                        if (workerArr.x === targetArr.x && workerArr.y === targetArr.y) {
+                            worker.health -= tower.damage;
+                        }
+                    });
+                    
                     // Сохраняем информацию о выстреле для визуализации (зона поражения)
                     tower.lastShotTarget = {
-                        x: targetArr.x,
-                        y: targetArr.y,
+                        x: targetX,
+                        y: targetY,
                         time: currentTime,
                         isAreaAttack: true // Флаг зоны поражения
                     };
                 } else {
-                    // Маленькая башня стреляет только по одному солдату
-                    closestSoldier.health -= tower.damage;
+                    // Маленькая башня стреляет только по одному цели
+                    closestTarget.health -= tower.damage;
                     
                     // Сохраняем информацию о выстреле для визуализации
                     tower.lastShotTarget = {
-                        x: closestSoldier.x,
-                        y: closestSoldier.y,
+                        x: targetX,
+                        y: targetY,
                         time: currentTime,
                         isAreaAttack: false
                     };

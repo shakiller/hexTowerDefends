@@ -6,6 +6,8 @@ import { PlayerBloc } from './bloc/PlayerBloc.js';
 import { TowerBloc } from './bloc/TowerBloc.js';
 import { SoldierBloc } from './bloc/SoldierBloc.js';
 import { ObstacleBloc } from './bloc/ObstacleBloc.js';
+import { GoldBloc } from './bloc/GoldBloc.js';
+import { WorkerBloc } from './bloc/WorkerBloc.js';
 import { HexGrid } from './game/HexGrid.js';
 import { Renderer } from './game/Renderer.js';
 import { BotAI } from './game/BotAI.js';
@@ -20,6 +22,8 @@ class Game {
         this.towerBloc = new TowerBloc(this.gameBloc, this.hexGrid);
         this.soldierBloc = new SoldierBloc(this.gameBloc, this.hexGrid);
         this.obstacleBloc = new ObstacleBloc();
+        this.goldBloc = new GoldBloc(this.hexGrid);
+        this.workerBloc = new WorkerBloc(this.gameBloc, this.hexGrid);
         
         this.canvas = document.getElementById('game-canvas');
         this.renderer = new Renderer(this.canvas, this.hexGrid);
@@ -393,26 +397,32 @@ class Game {
                 console.log('=== РЕЗУЛЬТАТ СОЗДАНИЯ СОЛДАТА ===', { success });
                 
                 if (success) {
-                    console.log('Солдат успешно создан!');
-                    this.lastSoldierCreationError = null;
-                    // Очищаем выбор после создания солдата
-                    this.playerBloc.clearSelection();
-                    // Обновляем UI после изменения золота
-                    this.updatePlayerPanel(this.playerBloc.getState());
-                    
-                    // Переключаем игрока только в режиме PvP
-                    if (gameState.gameMode === 'pvp') {
-                        this.gameBloc.switchPlayer();
-                    }
-                } else {
-                    const errorMsg = player.gold < soldierConfig.cost 
-                        ? `Недостаточно золота. Нужно: ${soldierConfig.cost}, есть: ${player.gold}`
-                        : 'Неизвестная ошибка при создании солдата';
-                    console.log('=== ОШИБКА СОЗДАНИЯ СОЛДАТА ===', errorMsg);
-                    this.lastSoldierCreationError = errorMsg;
+                    this.updateUI(this.gameBloc.getState());
                 }
+            });
+        });
+        
+        // Обработчики для кнопок создания рабочих
+        const workerButtons = document.querySelectorAll('.worker-btn');
+        workerButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const type = btn.dataset.type;
+                const cost = parseInt(btn.dataset.cost);
                 
-                this.updateSoldierDebugInfo();
+                const gameState = this.gameBloc.getState();
+                const currentPlayer = gameState.currentPlayer;
+                const playerId = currentPlayer;
+                
+                // Находим позицию ворот для создания рабочего
+                const centerX = Math.floor(this.hexGrid.width / 2);
+                const gateY = playerId === 1 ? this.hexGrid.height - 1 : 0;
+                const gatePos = { x: centerX, y: gateY };
+                
+                const success = this.workerBloc.createWorker(gatePos, playerId, type);
+                if (success) {
+                    this.updateUI(this.gameBloc.getState());
+                }
             });
         });
         
@@ -804,6 +814,78 @@ class Game {
             });
         }
         
+        // Обработчики для настроек рабочих-сборщиков
+        const gathererCapacitySlider = document.getElementById('gatherer-capacity');
+        const gathererCapacityValue = document.getElementById('gatherer-capacity-value');
+        if (gathererCapacitySlider && gathererCapacityValue) {
+            gathererCapacitySlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                gathererCapacityValue.textContent = value;
+                this.workerBloc.setGathererSetting('capacity', value);
+            });
+        }
+        
+        const gathererHealthSlider = document.getElementById('gatherer-health');
+        const gathererHealthValue = document.getElementById('gatherer-health-value');
+        if (gathererHealthSlider && gathererHealthValue) {
+            gathererHealthSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                gathererHealthValue.textContent = value;
+                this.workerBloc.setGathererSetting('health', value);
+            });
+        }
+        
+        const gathererGatherSpeedSlider = document.getElementById('gatherer-gather-speed');
+        const gathererGatherSpeedValue = document.getElementById('gatherer-gather-speed-value');
+        if (gathererGatherSpeedSlider && gathererGatherSpeedValue) {
+            gathererGatherSpeedSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                gathererGatherSpeedValue.textContent = value;
+                this.workerBloc.setGathererSetting('gatherSpeed', value);
+            });
+        }
+        
+        const gathererMoveSpeedSlider = document.getElementById('gatherer-move-speed');
+        const gathererMoveSpeedValue = document.getElementById('gatherer-move-speed-value');
+        if (gathererMoveSpeedSlider && gathererMoveSpeedValue) {
+            gathererMoveSpeedSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                gathererMoveSpeedValue.textContent = value.toFixed(1);
+                this.workerBloc.setGathererSetting('moveSpeed', value);
+            });
+        }
+        
+        // Обработчики для настроек рабочих-строителей
+        const builderHealthSlider = document.getElementById('builder-health');
+        const builderHealthValue = document.getElementById('builder-health-value');
+        if (builderHealthSlider && builderHealthValue) {
+            builderHealthSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                builderHealthValue.textContent = value;
+                this.workerBloc.setBuilderSetting('health', value);
+            });
+        }
+        
+        const builderMoveSpeedSlider = document.getElementById('builder-move-speed');
+        const builderMoveSpeedValue = document.getElementById('builder-move-speed-value');
+        if (builderMoveSpeedSlider && builderMoveSpeedValue) {
+            builderMoveSpeedSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                builderMoveSpeedValue.textContent = value.toFixed(1);
+                this.workerBloc.setBuilderSetting('moveSpeed', value);
+            });
+        }
+        
+        const builderBuildSpeedSlider = document.getElementById('builder-build-speed');
+        const builderBuildSpeedValue = document.getElementById('builder-build-speed-value');
+        if (builderBuildSpeedSlider && builderBuildSpeedValue) {
+            builderBuildSpeedSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                builderBuildSpeedValue.textContent = value;
+                this.workerBloc.setBuilderSetting('buildSpeed', value);
+            });
+        }
+        
         console.log('Обработчики клика зарегистрированы');
     }
 
@@ -836,6 +918,14 @@ class Game {
         this.obstacleBloc.subscribe(() => {
             this.render();
         });
+        
+        this.goldBloc.subscribe(() => {
+            this.render();
+        });
+        
+        this.workerBloc.subscribe(() => {
+            this.render();
+        });
     }
 
     startGame(mode) {
@@ -845,7 +935,12 @@ class Game {
         this.towerBloc.reset();
         this.soldierBloc.reset();
         this.obstacleBloc.reset();
+        this.goldBloc.reset();
+        this.workerBloc.reset();
         this.playerBloc.clearSelection();
+        
+        // Генерируем золото на поле (одинаковое количество на обеих половинах)
+        this.goldBloc.generateGold(50, 10); // 50 золота в каждой куче, 10 куч на каждую половину
         
         // Препятствия теперь устанавливаются вручную через UI (отключена автоматическая генерация)
         
@@ -972,6 +1067,12 @@ class Game {
         });
         
         document.querySelectorAll('.soldier-btn').forEach(btn => {
+            const cost = parseInt(btn.dataset.cost);
+            btn.disabled = gameState.players[currentPlayer].gold < cost;
+        });
+        
+        // Обновление кнопок рабочих
+        document.querySelectorAll('.worker-btn').forEach(btn => {
             const cost = parseInt(btn.dataset.cost);
             btn.disabled = gameState.players[currentPlayer].gold < cost;
         });
@@ -1188,7 +1289,37 @@ class Game {
                 return;
             }
             
-            // Размещаем препятствие
+            // Ищем ближайшего свободного строителя
+            const builders = this.workerBloc.getState().workers.filter(w => 
+                w.playerId === currentPlayer && 
+                w.type === 'builder' && 
+                !w.buildingTarget
+            );
+            
+            if (builders.length > 0) {
+                // Находим ближайшего строителя
+                let closestBuilder = null;
+                let minDistance = Infinity;
+                
+                builders.forEach(builder => {
+                    const builderHex = this.hexGrid.arrayToHex(builder.x, builder.y);
+                    const targetHex = this.hexGrid.arrayToHex(arrHex.x, arrHex.y);
+                    const distance = this.hexGrid.hexDistance(builderHex, targetHex);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestBuilder = builder;
+                    }
+                });
+                
+                if (closestBuilder) {
+                    // Даём задание строителю
+                    this.workerBloc.assignBuildTask(closestBuilder.id, arrHex.x, arrHex.y, playerState.selectedObstacleType);
+                    this.playerBloc.clearSelection();
+                    return;
+                }
+            }
+            
+            // Если нет свободных строителей - размещаем препятствие напрямую (как раньше)
             this.obstacleBloc.addObstacle(arrHex.x, arrHex.y, playerState.selectedObstacleType);
             this.playerBloc.clearSelection();
             return;
@@ -1272,16 +1403,20 @@ class Game {
         
         // Обновление башен (стрельба) - всегда, даже в тестовом режиме
         const soldiers = this.soldierBloc.getState().soldiers;
+        const workers = this.workerBloc.getState().workers;
         const playerState = this.playerBloc.getState();
         // В тестовом режиме башен передаём позицию мыши для реакции на курсор
         const mouseHex = playerState.testTowersMode && this.mousePosition && this.mousePosition.hex ? 
                          this.mousePosition.hex : null;
-        this.towerBloc.updateTowers(currentTime, soldiers, this.hexGrid, mouseHex);
+        this.towerBloc.updateTowers(currentTime, soldiers, this.hexGrid, mouseHex, workers);
         
         if (gameState.gameState === 'playing') {
             // Обновление солдат
             console.log(`gameLoop: вызываем updateSoldiers, солдат в массиве: ${this.soldierBloc.getState().soldiers.length}`);
             this.soldierBloc.updateSoldiers(deltaTime, this.towerBloc, this.obstacleBloc);
+            
+            // Обновление рабочих
+            this.workerBloc.updateWorkers(deltaTime, currentTime, this.goldBloc, this.obstacleBloc, this.towerBloc, this.hexGrid);
             
             // Обновление бота
             this.botAI.update(currentTime);
@@ -1480,7 +1615,9 @@ class Game {
         const playerState = this.playerBloc.getState();
         const obstacleState = this.obstacleBloc.getState();
         
-        this.renderer.render(gameState, towerState, soldierState, playerState, this.mousePosition, obstacleState);
+        const goldState = this.goldBloc.getState();
+        const workerState = this.workerBloc.getState();
+        this.renderer.render(gameState, towerState, soldierState, playerState, this.mousePosition, obstacleState, goldState, workerState);
     }
 }
 

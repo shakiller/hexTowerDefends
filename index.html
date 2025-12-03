@@ -269,6 +269,70 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- РАБОЧИЕ -->
+                    <div style="margin-top: 10px; border-top: 2px solid #ffaa00; padding-top: 8px;">
+                        <h5 style="color: #ffaa00; margin-bottom: 6px; font-size: 0.85em; font-weight: bold;">🔧 Рабочие</h5>
+                        
+                        <div style="margin-left: 5px;">
+                            <div style="margin-bottom: 6px;">
+                                <label style="color: #ccc; font-size: 0.75em; display: block; margin-bottom: 3px; font-weight: bold;">Сборщик</label>
+                                
+                                <div style="margin-left: 5px; margin-bottom: 3px;">
+                                    <label for="gatherer-capacity" style="color: #ccc; font-size: 0.7em; display: block; margin-bottom: 1px;">
+                                        Вместимость: <span id="gatherer-capacity-value">10</span>
+                                    </label>
+                                    <input type="range" id="gatherer-capacity" min="1" max="50" step="1" value="10" style="width: 100%;">
+                                </div>
+                                
+                                <div style="margin-left: 5px; margin-bottom: 3px;">
+                                    <label for="gatherer-health" style="color: #ccc; font-size: 0.7em; display: block; margin-bottom: 1px;">
+                                        HP: <span id="gatherer-health-value">30</span>
+                                    </label>
+                                    <input type="range" id="gatherer-health" min="1" max="200" step="5" value="30" style="width: 100%;">
+                                </div>
+                                
+                                <div style="margin-left: 5px; margin-bottom: 3px;">
+                                    <label for="gatherer-gather-speed" style="color: #ccc; font-size: 0.7em; display: block; margin-bottom: 1px;">
+                                        Скорость сбора: <span id="gatherer-gather-speed-value">1000</span>
+                                    </label>
+                                    <input type="range" id="gatherer-gather-speed" min="100" max="5000" step="100" value="1000" style="width: 100%;">
+                                </div>
+                                
+                                <div style="margin-left: 5px; margin-bottom: 3px;">
+                                    <label for="gatherer-move-speed" style="color: #ccc; font-size: 0.7em; display: block; margin-bottom: 1px;">
+                                        Скорость движения: <span id="gatherer-move-speed-value">0.8</span>
+                                    </label>
+                                    <input type="range" id="gatherer-move-speed" min="0.1" max="2.0" step="0.1" value="0.8" style="width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <div style="margin-bottom: 6px;">
+                                <label style="color: #ccc; font-size: 0.75em; display: block; margin-bottom: 3px; font-weight: bold;">Строитель</label>
+                                
+                                <div style="margin-left: 5px; margin-bottom: 3px;">
+                                    <label for="builder-health" style="color: #ccc; font-size: 0.7em; display: block; margin-bottom: 1px;">
+                                        HP: <span id="builder-health-value">30</span>
+                                    </label>
+                                    <input type="range" id="builder-health" min="1" max="200" step="5" value="30" style="width: 100%;">
+                                </div>
+                                
+                                <div style="margin-left: 5px; margin-bottom: 3px;">
+                                    <label for="builder-move-speed" style="color: #ccc; font-size: 0.7em; display: block; margin-bottom: 1px;">
+                                        Скорость движения: <span id="builder-move-speed-value">0.8</span>
+                                    </label>
+                                    <input type="range" id="builder-move-speed" min="0.1" max="2.0" step="0.1" value="0.8" style="width: 100%;">
+                                </div>
+                                
+                                <div style="margin-left: 5px; margin-bottom: 3px;">
+                                    <label for="builder-build-speed" style="color: #ccc; font-size: 0.7em; display: block; margin-bottom: 1px;">
+                                        Скорость стр-ва: <span id="builder-build-speed-value">2000</span>
+                                    </label>
+                                    <input type="range" id="builder-build-speed" min="100" max="10000" step="100" value="2000" style="width: 100%;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -297,6 +361,18 @@
                         </button>
                     </div>
                     <div id="selected-soldier-info" class="info-panel"></div>
+                </div>
+                
+                <div id="worker-panel" class="panel-section">
+                    <h4>Рабочие</h4>
+                    <div class="worker-options">
+                        <button class="worker-btn" data-type="gatherer" data-cost="50">
+                            Сборщик (50)
+                        </button>
+                        <button class="worker-btn" data-type="builder" data-cost="50">
+                            Строитель (50)
+                        </button>
+                    </div>
                 </div>
 
                 <div id="obstacle-panel" class="panel-section">

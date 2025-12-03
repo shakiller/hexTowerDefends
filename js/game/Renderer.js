@@ -272,6 +272,124 @@ export class Renderer {
         this.ctx.restore();
     }
 
+    drawGold(goldPiles) {
+        this.ctx.save();
+        
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        goldPiles.forEach(pile => {
+            if (pile.collected) return;
+            
+            const hex = this.hexGrid.arrayToHex(pile.x, pile.y);
+            const pixelPos = this.hexGrid.hexToPixel(hex);
+            
+            // Рисуем золото как жёлтый круг
+            const size = this.hexGrid.hexSize * 0.3;
+            this.ctx.fillStyle = '#ffd700';
+            this.ctx.strokeStyle = '#ffaa00';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc(pixelPos.x, pixelPos.y, size, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.stroke();
+            
+            // Показываем количество золота
+            this.ctx.fillStyle = 'white';
+            this.ctx.strokeStyle = 'black';
+            this.ctx.lineWidth = 1;
+            this.ctx.font = 'bold 10px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.strokeText(pile.amount, pixelPos.x, pixelPos.y);
+            this.ctx.fillText(pile.amount, pixelPos.x, pixelPos.y);
+        });
+        
+        this.ctx.restore();
+    }
+
+    drawWorkers(workers) {
+        this.ctx.save();
+        
+        // Применяем виртуальный скролл
+        this.ctx.translate(-this.scrollX, -this.scrollY);
+        
+        // Используем те же множители что и в hexToPixel
+        const horizontalMultiplier = 0.87;
+        const totalWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
+        const offsetX = Math.max(0, (this.fieldWidth - totalWidth) / 2);
+        const offsetY = this.hexGrid.hexSize;
+        this.ctx.translate(offsetX, offsetY);
+        
+        workers.forEach(worker => {
+            // Движение от центра одной ячейки к центру другой (аналогично солдатам)
+            const currentHexIndex = Math.floor(worker.currentHexIndex);
+            let pixelPos;
+            
+            if (!worker.path || currentHexIndex >= worker.path.length - 1) {
+                // Достигли цели или путь не найден, рисуем на текущей позиции
+                const hex = this.hexGrid.arrayToHex(worker.x, worker.y);
+                pixelPos = this.hexGrid.hexToPixel(hex);
+            } else {
+                const currentHex = worker.path[currentHexIndex];
+                const nextHex = worker.path[currentHexIndex + 1];
+                const currentPixel = this.hexGrid.hexToPixel(currentHex);
+                const nextPixel = this.hexGrid.hexToPixel(nextHex);
+                
+                // Интерполяция между центрами ячеек
+                pixelPos = {
+                    x: currentPixel.x + (nextPixel.x - currentPixel.x) * worker.moveProgress,
+                    y: currentPixel.y + (nextPixel.y - currentPixel.y) * worker.moveProgress
+                };
+            }
+            
+            this.drawWorkerAt(pixelPos, worker);
+        });
+        
+        this.ctx.restore();
+    }
+
+    drawWorkerAt(pixelPos, worker) {
+        this.ctx.save();
+        this.ctx.translate(pixelPos.x, pixelPos.y);
+        this.ctx.rotate(worker.direction || 0);
+
+        const size = this.hexGrid.hexSize * 0.35;
+        const color = worker.playerId === 1 ? '#90e24a' : '#e24a4a'; // Зелёный/красный
+        
+        // Разные цвета для разных типов рабочих
+        if (worker.type === 'builder') {
+            this.ctx.fillStyle = worker.playerId === 1 ? '#4a90e2' : '#e24a4a'; // Синий/красный для строителей
+        } else {
+            this.ctx.fillStyle = color; // Зелёный/красный для сборщиков
+        }
+
+        // Рисуем квадрат для рабочего
+        this.ctx.fillRect(-size / 2, -size / 2, size, size);
+        
+        // Если несёт золото - показываем индикатор
+        if (worker.carryingGold && worker.goldAmount > 0) {
+            this.ctx.fillStyle = '#ffd700';
+            this.ctx.beginPath();
+            this.ctx.arc(size / 2, -size / 2, size * 0.2, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+
+        // HP bar
+        const hpPercent = worker.health / worker.maxHealth;
+        this.ctx.fillStyle = hpPercent > 0.5 ? '#4a90e2' : '#e24a4a';
+        this.ctx.fillRect(-size / 2, -size / 2 - 5, size * hpPercent, 3);
+
+        this.ctx.restore();
+    }
+
     drawSoldiers(soldiers) {
         this.ctx.save();
         
@@ -662,7 +780,7 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    render(gameState, towerState, soldierState, playerState, mousePosition = null, obstacleState = null) {
+    render(gameState, towerState, soldierState, playerState, mousePosition = null, obstacleState = null, goldState = null, workerState = null) {
         this.clear();
         this.drawGrid();
         this.drawBases();
@@ -679,6 +797,17 @@ export class Renderer {
         }
         
         this.drawTowers(towerState.towers, playerState.testTowersMode);
+        
+        // Рисуем золото перед рабочими и солдатами
+        if (goldState && goldState.goldPiles) {
+            this.drawGold(goldState.goldPiles);
+        }
+        
+        // Рисуем рабочих перед солдатами
+        if (workerState && workerState.workers) {
+            this.drawWorkers(workerState.workers);
+        }
+        
         this.drawSoldiers(soldierState.soldiers);
         
         if (playerState.selectedCell) {
