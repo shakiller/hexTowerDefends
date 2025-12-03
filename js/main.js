@@ -1272,7 +1272,11 @@ class Game {
         
         // Обновление башен (стрельба) - всегда, даже в тестовом режиме
         const soldiers = this.soldierBloc.getState().soldiers;
-        this.towerBloc.updateTowers(currentTime, soldiers, this.hexGrid);
+        const playerState = this.playerBloc.getState();
+        // В тестовом режиме башен передаём позицию мыши для реакции на курсор
+        const mouseHex = playerState.testTowersMode && this.mousePosition && this.mousePosition.hex ? 
+                         this.mousePosition.hex : null;
+        this.towerBloc.updateTowers(currentTime, soldiers, this.hexGrid, mouseHex);
         
         if (gameState.gameState === 'playing') {
             // Обновление солдат
@@ -1287,7 +1291,6 @@ class Game {
         this.updateSoldierDebugInfo();
         
         // Обновление информации о тестировании соседей
-        const playerState = this.playerBloc.getState();
         if (playerState.testNeighborsMode && playerState.testSelectedHex) {
             this.updateTestNeighborsInfo(playerState.testSelectedHex);
         }

@@ -168,6 +168,56 @@ export class HexGrid {
         // Расстояние между двумя гексагонами (кубические координаты)
         return (Math.abs(hex1.q - hex2.q) + Math.abs(hex1.r - hex2.r) + Math.abs(hex1.s - hex2.s)) / 2;
     }
+    
+    /**
+     * Находит все гексы в радиусе range от центрального гекса, используя логику соседей
+     * Радиус 1 = соседи, радиус 2 = соседи соседей и т.д.
+     */
+    getHexesInRange(centerHex, range) {
+        const normalizedCenter = this.hexRound(centerHex);
+        const visited = new Set();
+        const result = [];
+        
+        // BFS для поиска всех гексов в радиусе
+        const queue = [{ hex: normalizedCenter, distance: 0 }];
+        visited.add(this.hexKey(normalizedCenter));
+        
+        while (queue.length > 0) {
+            const { hex, distance } = queue.shift();
+            
+            if (distance <= range) {
+                result.push(hex);
+            }
+            
+            // Если достигли максимального расстояния, не добавляем соседей
+            if (distance >= range) {
+                continue;
+            }
+            
+            // Добавляем соседей
+            const neighbors = this.getHexNeighbors(hex);
+            for (const neighbor of neighbors) {
+                const key = this.hexKey(neighbor);
+                if (!visited.has(key)) {
+                    visited.add(key);
+                    queue.push({ hex: neighbor, distance: distance + 1 });
+                }
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Проверяет, находится ли целевой гекс в радиусе от центрального, используя логику соседей
+     */
+    isInRange(centerHex, targetHex, range) {
+        const hexesInRange = this.getHexesInRange(centerHex, range);
+        const normalizedTarget = this.hexRound(targetHex);
+        const targetKey = this.hexKey(normalizedTarget);
+        
+        return hexesInRange.some(hex => this.hexKey(hex) === targetKey);
+    }
 
     isBlocked(hex, obstacleBloc, towerBloc) {
         // Проверяем, заблокирована ли ячейка препятствием или башней

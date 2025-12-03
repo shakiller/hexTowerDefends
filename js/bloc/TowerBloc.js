@@ -233,7 +233,7 @@ export class TowerBloc {
         return { ...this.state };
     }
 
-    updateTowers(currentTime, soldiers, hexGrid) {
+    updateTowers(currentTime, soldiers, hexGrid, mouseHex = null) {
         // Обновляем башни и их стрельбу
         this.state.towers.forEach(tower => {
             // Обновляем fireRate, range и damage из текущих настроек
@@ -253,9 +253,27 @@ export class TowerBloc {
                 return; // Ещё не прошло достаточно времени
             }
             
-            // Режим тестирования: стрельба по кругу
+            // Режим тестирования: реакция на курсор мыши или стрельба по кругу
             if (this.testMode) {
                 const towerHex = hexGrid.arrayToHex(tower.x, tower.y);
+                
+                // Если есть позиция мыши, проверяем, находится ли она в радиусе башни (используя логику соседей)
+                if (mouseHex) {
+                    if (hexGrid.isInRange(towerHex, mouseHex, tower.range)) {
+                        // Курсор в радиусе - стреляем по курсору
+                        const targetArr = hexGrid.hexToArray(mouseHex);
+                        tower.lastShotTime = currentTime;
+                        tower.lastShotTarget = {
+                            x: targetArr.x,
+                            y: targetArr.y,
+                            time: currentTime,
+                            isAreaAttack: tower.type === 'strong' // Зона поражения для большой башни
+                        };
+                        return;
+                    }
+                }
+                
+                // Если курсор не в радиусе или его нет - стреляем по кругу (как раньше)
                 const towerPixel = hexGrid.hexToPixel(towerHex);
                 
                 // Инициализируем угол, если его нет
@@ -277,7 +295,8 @@ export class TowerBloc {
                 tower.lastShotTarget = {
                     x: targetArr.x,
                     y: targetArr.y,
-                    time: currentTime
+                    time: currentTime,
+                    isAreaAttack: tower.type === 'strong' // Зона поражения для большой башни
                 };
                 
                 // Увеличиваем угол для следующего выстрела (по кругу)
@@ -289,7 +308,7 @@ export class TowerBloc {
                 return;
             }
             
-            // Обычный режим: находим ближайшего вражеского солдата в радиусе
+            // Обычный режим: находим ближайшего вражеского солдата в радиусе (используя логику соседей)
             const towerHex = hexGrid.arrayToHex(tower.x, tower.y);
             let closestSoldier = null;
             let minDistance = Infinity;
@@ -298,12 +317,14 @@ export class TowerBloc {
                 if (soldier.playerId === tower.playerId) return; // Не стреляем по своим
                 
                 const soldierHex = hexGrid.arrayToHex(soldier.x, soldier.y);
-                const distance = hexGrid.hexDistance(towerHex, soldierHex); // Расстояние в гексагональных единицах
                 
-                // tower.range уже в гексагональных единицах (1 клетка = 1 единица, 2 клетки = 2 единицы)
-                if (distance <= tower.range && distance < minDistance) {
-                    minDistance = distance;
-                    closestSoldier = soldier;
+                // Используем логику соседей для проверки радиуса
+                if (hexGrid.isInRange(towerHex, soldierHex, tower.range)) {
+                    const distance = hexGrid.hexDistance(towerHex, soldierHex);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestSoldier = soldier;
+                    }
                 }
             });
             

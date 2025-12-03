@@ -126,7 +126,7 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    drawTowers(towers) {
+    drawTowers(towers, testTowersMode = false) {
         this.ctx.save();
         
         // Применяем виртуальный скролл
@@ -150,15 +150,20 @@ export class Renderer {
             const baseSize = this.hexGrid.hexSize * 0.6;
             const size = isStrong ? baseSize * 1.3 : baseSize; // Большая башня больше
             
-            // Визуализация радиуса в тестовом режиме
-            if (tower.testAngle !== undefined) {
-                // Рисуем окружность радиуса
-                const radiusInPixels = tower.range * this.hexGrid.hexSize * 2;
-                this.ctx.strokeStyle = 'rgba(255, 255, 0, 0.3)';
-                this.ctx.lineWidth = 1;
-                this.ctx.beginPath();
-                this.ctx.arc(pixelPos.x, pixelPos.y, radiusInPixels, 0, Math.PI * 2);
-                this.ctx.stroke();
+            // Визуализация радиуса в тестовом режиме (используя логику соседей)
+            if (testTowersMode || tower.testAngle !== undefined) {
+                // Получаем все гексы в радиусе на основе логики соседей
+                const hexesInRange = this.hexGrid.getHexesInRange(hex, tower.range);
+                
+                // Рисуем каждый гекс в радиусе
+                hexesInRange.forEach(rangeHex => {
+                    if (this.hexGrid.hexKey(rangeHex) === this.hexGrid.hexKey(hex)) {
+                        return; // Пропускаем центральный гекс
+                    }
+                    const rangePixel = this.hexGrid.hexToPixel(rangeHex);
+                    const alpha = testTowersMode ? 0.3 : 0.15;
+                    this.hexGrid.drawHex(this.ctx, rangeHex, `rgba(255, 255, 0, ${alpha})`, `rgba(255, 255, 0, ${alpha * 2})`);
+                });
             }
             
             // Рисуем прямоугольник-башню
@@ -673,7 +678,7 @@ export class Renderer {
             this.drawPlacementPreview(gameState, playerState, towerState, obstacleState);
         }
         
-        this.drawTowers(towerState.towers);
+        this.drawTowers(towerState.towers, playerState.testTowersMode);
         this.drawSoldiers(soldierState.soldiers);
         
         if (playerState.selectedCell) {
