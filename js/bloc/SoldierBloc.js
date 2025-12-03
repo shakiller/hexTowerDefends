@@ -471,13 +471,44 @@ export class SoldierBloc {
                 soldier.path = this.hexGrid.findPath(currentHexForPath, targetHex, obstacleBloc, towerBloc);
                 soldier.lastPathRecalculation = currentTime;
                 
-                // Если путь не найден, удаляем солдата
+                // Если путь не найден, не удаляем солдата сразу - даём шанс найти альтернативный путь
                 if (!soldier.path || soldier.path.length === 0) {
-                    console.log(`❌ Не удалось найти новый путь для солдата ${soldier.id}`);
-                    const soldierConfig = this.getSoldierConfig(soldier.type);
-                    this.gameBloc.updatePlayerGold(soldier.playerId, soldierConfig.cost);
-                    soldiersToRemove.push(soldier.id);
-                    return;
+                    // Проверяем, не рядом ли с базой врага - если да, атакуем
+                    const currentHexForCheck = this.hexGrid.arrayToHex(soldier.x, soldier.y);
+                    const currentArrForCheck = this.hexGrid.hexToArray(currentHexForCheck);
+                    const centerX = Math.floor(this.hexGrid.width / 2);
+                    const enemyPlayerId = soldier.playerId === 1 ? 2 : 1;
+                    
+                    let isNearEnemyBase = false;
+                    if (enemyPlayerId === 2) {
+                        isNearEnemyBase = currentArrForCheck.y <= 2;
+                    } else {
+                        isNearEnemyBase = currentArrForCheck.y >= this.hexGrid.height - 3;
+                    }
+                    
+                    if (isNearEnemyBase) {
+                        // Рядом с базой - продолжаем атаку, путь найдётся позже
+                        soldier.path = null; // Сбросим путь, попробуем найти позже
+                        return;
+                    }
+                    
+                    // Если не рядом с базой и путь не найден - пробуем найти путь к ближайшей точке к базе
+                    const targetY = enemyPlayerId === 2 ? 1 : this.hexGrid.height - 2;
+                    const alternativeTargetHex = this.hexGrid.arrayToHex(centerX, targetY);
+                    soldier.path = this.hexGrid.findPath(currentHexForPath, alternativeTargetHex, obstacleBloc, towerBloc);
+                    
+                    if (!soldier.path || soldier.path.length === 0) {
+                        // Всё ещё нет пути - только тогда удаляем
+                        const soldierConfig = this.getSoldierConfig(soldier.type);
+                        this.gameBloc.updatePlayerGold(soldier.playerId, soldierConfig.cost);
+                        soldiersToRemove.push(soldier.id);
+                        return;
+                    } else {
+                        // Обновили цель на альтернативную
+                        const altTargetArr = this.hexGrid.hexToArray(alternativeTargetHex);
+                        soldier.targetX = altTargetArr.x;
+                        soldier.targetY = altTargetArr.y;
+                    }
                 }
                 
                 // Проверяем, что первая ячейка нового пути совпадает с текущей

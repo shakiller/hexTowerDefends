@@ -1,6 +1,3 @@
-console.log('=== НАЧАЛО ЗАГРУЗКИ main.js ===');
-console.log('Если вы видите это сообщение, значит модуль main.js загружается!');
-
 import { GameBloc } from './bloc/GameBloc.js';
 import { PlayerBloc } from './bloc/PlayerBloc.js';
 import { TowerBloc } from './bloc/TowerBloc.js';
@@ -12,12 +9,10 @@ import { HexGrid } from './game/HexGrid.js';
 import { Renderer } from './game/Renderer.js';
 import { BotAI } from './game/BotAI.js';
 
-console.log('=== ИМПОРТЫ ЗАГРУЖЕНЫ ===');
-
 class Game {
     constructor() {
         this.gameBloc = new GameBloc();
-        this.hexGrid = new HexGrid(15, 52); // 52 строки (0-51): сетка до 50, база на новой строке 51 с только чётными ячейками
+        this.hexGrid = new HexGrid(15, 30); // 30 строк: сетка до 28, база на строке 29
         this.playerBloc = new PlayerBloc(this.gameBloc);
         this.towerBloc = new TowerBloc(this.gameBloc, this.hexGrid);
         this.soldierBloc = new SoldierBloc(this.gameBloc, this.hexGrid);
@@ -51,20 +46,10 @@ class Game {
         this.lastTreeClickTime = 0;
         this.doubleClickDelay = 300; // Задержка для двойного клика в мс
         
-        console.log('Вызов setupEventListeners...');
         this.setupEventListeners();
         this.setupDebugTabs();
-        console.log('setupEventListeners завершён');
-        
-        console.log('Вызов setupBLoCSubscriptions...');
         this.setupBLoCSubscriptions();
-        console.log('setupBLoCSubscriptions завершён');
-        
-        console.log('Вызов setupDragToScroll...');
         this.setupDragToScroll();
-        console.log('setupDragToScroll завершён');
-        
-        console.log('=== КОНСТРУКТОР Game ЗАВЕРШЁН ===');
         
         // Обработка изменения размера окна
         window.addEventListener('resize', () => {
@@ -172,7 +157,6 @@ class Game {
         
         // Используем и addEventListener и onclick для надёжности
         const handleMenuClick = (mode, e) => {
-            console.log(`=== КЛИК ПО ${mode.toUpperCase()} ===`);
             if (e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -182,28 +166,23 @@ class Game {
         
         // Простая регистрация - только addEventListener
         btnPvp.addEventListener('click', (e) => {
-            console.log('=== КЛИК ПО PVP (addEventListener) ===', e);
             e.preventDefault();
             e.stopPropagation();
             handleMenuClick('pvp', e);
         });
         
         btnPve.addEventListener('click', (e) => {
-            console.log('=== КЛИК ПО PVE (addEventListener) ===', e);
             e.preventDefault();
             e.stopPropagation();
             handleMenuClick('pve', e);
         });
         
         btnCampaign.addEventListener('click', (e) => {
-            console.log('=== КЛИК ПО CAMPAIGN (addEventListener) ===', e);
             e.preventDefault();
             e.stopPropagation();
             handleMenuClick('campaign', e);
         });
         
-        console.log('Обработчики кнопок меню зарегистрированы');
-        console.log('Попробуйте кликнуть по кнопке - должно появиться сообщение');
         
         // Игровые кнопки
         document.getElementById('btn-pause').addEventListener('click', () => {
@@ -214,6 +193,12 @@ class Game {
             this.stopGame();
         });
         document.getElementById('btn-restart').addEventListener('click', () => {
+            // Скрываем попап
+            const victoryPopup = document.getElementById('victory-popup');
+            if (victoryPopup) {
+                victoryPopup.style.display = 'none';
+            }
+            
             const gameState = this.gameBloc.getState();
             if (gameState.gameMode === 'campaign' && gameState.winner === 1) {
                 // Очищаем состояние игры для следующего уровня
@@ -232,6 +217,12 @@ class Game {
             }
         });
         document.getElementById('btn-back-menu').addEventListener('click', () => {
+            // Скрываем попап
+            const victoryPopup = document.getElementById('victory-popup');
+            if (victoryPopup) {
+                victoryPopup.style.display = 'none';
+            }
+            
             this.showScreen('menu-screen');
             this.gameBloc.reset();
             this.stopGame();
@@ -239,10 +230,8 @@ class Game {
         
         // Панель башен
         const towerButtons = document.querySelectorAll('.tower-btn');
-        console.log('Найдено кнопок башен:', towerButtons.length);
         
         towerButtons.forEach((btn, index) => {
-            console.log(`Регистрация обработчика для кнопки башни ${index}:`, btn);
             btn.addEventListener('click', (e) => {
                 console.log('=== КЛИК ПО КНОПКЕ БАШНИ ===');
                 const type = e.target.dataset.type || e.target.closest('.tower-btn')?.dataset.type;
@@ -261,7 +250,6 @@ class Game {
                     this.playerBloc.selectTowerType(type);
                 }
                 const newState = this.playerBloc.getState();
-                console.log('Состояние после выбора башни:', newState);
             });
         });
         
@@ -317,7 +305,7 @@ class Game {
                             btnCopyTestInfo.textContent = 'Копировать информацию';
                         }, 2000);
                     }).catch(err => {
-                        console.error('Ошибка копирования:', err);
+                        // Ошибка копирования
                         // Fallback для старых браузеров
                         const textarea = document.createElement('textarea');
                         textarea.value = text;
@@ -338,7 +326,6 @@ class Game {
 
         // Панель солдат
         const soldierButtons = document.querySelectorAll('.soldier-btn');
-        console.log('=== НАЙДЕНО КНОПОК СОЛДАТ: ===', soldierButtons.length);
         soldierButtons.forEach((btn, index) => {
             console.log(`Регистрация обработчика для кнопки солдата ${index}:`, btn);
             btn.addEventListener('click', (e) => {
@@ -1056,8 +1043,16 @@ class Game {
                 victoryText = `Победил Игрок ${gameState.winner}!`;
             }
             document.getElementById('victory-text').textContent = victoryText;
-            this.showScreen('victory-screen');
+            const victoryPopup = document.getElementById('victory-popup');
+            if (victoryPopup) {
+                victoryPopup.style.display = 'block';
+            }
             this.stopGame();
+        } else {
+            const victoryPopup = document.getElementById('victory-popup');
+            if (victoryPopup) {
+                victoryPopup.style.display = 'none';
+            }
         }
     }
 
@@ -1534,7 +1529,7 @@ class Game {
         
         if (gameState.gameState === 'playing') {
             // Обновление солдат
-            console.log(`gameLoop: вызываем updateSoldiers, солдат в массиве: ${this.soldierBloc.getState().soldiers.length}`);
+            // Убрали избыточное логирование для производительности
             this.soldierBloc.updateSoldiers(deltaTime, this.towerBloc, this.obstacleBloc);
             
             // Обновление рабочих
@@ -1565,6 +1560,9 @@ class Game {
         if (playerState.testNeighborsMode && playerState.testSelectedHex) {
             this.updateTestNeighborsInfo(playerState.testSelectedHex);
         }
+        
+        // Обновление UI
+        this.updateUI(gameState);
         
         this.render();
         this.lastTime = currentTime;
@@ -1680,15 +1678,18 @@ class Game {
         const workerState = this.workerBloc.getState();
         const workers = workerState.workers;
         
+        // Фильтруем только строителей
+        const builders = workers.filter(w => w.type === 'builder');
+        
         let info = '';
         
-        const actualWorkersCount = workers ? workers.length : 0;
+        const actualBuildersCount = builders ? builders.length : 0;
         
-        if (actualWorkersCount === 0) {
-            info += `Нет рабочих\n`;
+        if (actualBuildersCount === 0) {
+            info += `Нет строителей\n`;
         } else {
-            info += `Всего рабочих: ${actualWorkersCount}\n\n`;
-            workers.forEach((worker, index) => {
+            info += `Всего строителей: ${actualBuildersCount}\n\n`;
+            builders.forEach((worker, index) => {
                 const pathInfo = worker.path ? `Путь: ${worker.path.length} ячеек, индекс: ${worker.currentHexIndex.toFixed(2)}` : 'Путь: не вычислен';
                 const progressInfo = worker.path ? `Прогресс: ${(worker.moveProgress * 100).toFixed(1)}%` : '';
                 
@@ -1698,14 +1699,7 @@ class Game {
                 if (progressInfo) info += `  ${progressInfo}\n`;
                 info += `  Здоровье: ${worker.health.toFixed(1)}/${worker.maxHealth}\n`;
                 
-                if (worker.type === 'gatherer') {
-                    info += `  Несёт золото: ${worker.carryingGold ? 'Да' : 'Нет'}\n`;
-                    info += `  Количество золота: ${worker.goldAmount}/${this.workerBloc.getGathererSettings().capacity}\n`;
-                    info += `  Целевое золото ID: ${worker.targetGoldId || 'нет'}\n`;
-                    if (worker.targetX !== null && worker.targetY !== null) {
-                        info += `  Цель: x=${worker.targetX} y=${worker.targetY}\n`;
-                    }
-                } else if (worker.type === 'builder') {
+                if (worker.type === 'builder') {
                     // Определяем состояние строителя
                     const centerX = Math.floor(this.hexGrid.width / 2);
                     const baseY = worker.playerId === 1 ? this.hexGrid.height - 1 : 0;

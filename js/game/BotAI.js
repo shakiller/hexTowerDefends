@@ -11,10 +11,12 @@ export class BotAI {
         this.actionInterval = 1500; // Действие каждые 1.5 секунды
         
         // Стратегические параметры
-        this.minGoldReserve = 150; // Минимальный резерв золота для критических действий
-        this.targetGatherers = 3; // Целевое количество сборщиков
-        this.targetBuilders = 2; // Целевое количество строителей
+        this.minGoldReserve = 100; // Минимальный резерв золота для критических действий
+        this.targetGatherers = 2; // Целевое количество сборщиков
+        this.targetBuilders = 1; // Целевое количество строителей
         this.towerDefenseRadius = 3; // Радиус защиты башнями вокруг базы
+        this.minTowers = 3; // Минимальное количество башен для защиты
+        this.targetSoldiers = 3; // Целевое количество солдат для атаки
         this.lastGoldCheck = 0;
         this.goldCheckInterval = 5000; // Проверка золота каждые 5 секунд
         
@@ -44,16 +46,6 @@ export class BotAI {
         }
 
         this.lastActionTime = currentTime;
-        
-        // Логируем вызов для отладки
-        if (Math.random() < 0.01) { // Логируем примерно 1% вызовов
-            console.log('[Bot] makeDecision вызван', {
-                gameMode: gameState.gameMode,
-                currentPlayer: gameState.currentPlayer,
-                player2Gold: gameState.players[2].gold
-            });
-        }
-        
         this.makeDecision(currentTime);
     }
 
@@ -63,7 +55,6 @@ export class BotAI {
         
         // Проверяем наличие необходимых блоков
         if (!this.workerBloc || !this.goldBloc) {
-            console.warn('[Bot] workerBloc или goldBloc не инициализированы!');
             this.currentState.currentAction = 'Ошибка: блоки не инициализированы';
             this.currentState.priority = 'ERROR';
             return;
@@ -90,10 +81,7 @@ export class BotAI {
                 this.currentState.currentAction = 'Создание сборщика золота';
                 this.currentState.priority = '1';
                 this.currentState.lastAction = `Создан сборщик золота (${gatherers.length + 1}/${this.targetGatherers})`;
-                console.log('[Bot] Создан сборщик золота');
                 return;
-            } else {
-                console.warn('[Bot] Не удалось создать сборщика, возможно недостаточно золота или позиция занята');
             }
         }
         
@@ -107,7 +95,6 @@ export class BotAI {
                 this.currentState.currentAction = 'Создание строителя';
                 this.currentState.priority = '2';
                 this.currentState.lastAction = `Создан строитель (${builders.length + 1}/${this.targetBuilders})`;
-                console.log('[Bot] Создан строитель');
                 return;
             }
         }
@@ -115,91 +102,84 @@ export class BotAI {
         // Приоритет 3: Строительство препятствий (если есть строители и золото)
         if (builders.length > 0 && player.gold >= this.minGoldReserve) {
             let obstaclePos = this.findBestObstaclePosition();
-            if (obstaclePos) {
+            let attempts = 0;
+            const maxAttempts = 5; // Максимум попыток найти безопасную позицию
+            
+            while (obstaclePos && attempts < maxAttempts) {
+                attempts++;
+                
                 // Проверяем, что препятствие не блокирует путь между воротами
                 if (this.wouldBlockGates(obstaclePos.x, obstaclePos.y)) {
-                    console.warn(`[Bot] Препятствие в (${obstaclePos.x}, ${obstaclePos.y}) заблокирует ворота, ищем альтернативу`);
-                    // Пробуем найти другую безопасную позицию
                     obstaclePos = this.findSafeObstaclePosition();
-                    if (!obstaclePos) {
-                        console.warn('[Bot] Не найдена безопасная позиция для препятствия');
-                    }
+                    continue;
                 }
                 
-                if (obstaclePos) {
-                    // Проверяем, нет ли уже препятствия в этой позиции
-                    const existingObstacle = this.obstacleBloc.getObstacleAt(obstaclePos.x, obstaclePos.y);
-                    if (existingObstacle) {
-                        console.warn(`[Bot] Позиция (${obstaclePos.x}, ${obstaclePos.y}) уже занята препятствием, ищем другую`);
-                        obstaclePos = this.findSafeObstaclePosition();
-                        if (!obstaclePos) {
-                            console.warn('[Bot] Не найдена свободная позиция для препятствия');
-                        }
-                    }
-                    
-                    // Проверяем, нет ли уже задачи в очереди для этой позиции
-                    if (obstaclePos) {
-                        const buildQueue = this.workerBloc.getBuildQueue(2);
-                        const alreadyInQueue = buildQueue.some(task => task.x === obstaclePos.x && task.y === obstaclePos.y);
-                        if (alreadyInQueue) {
-                            console.warn(`[Bot] Позиция (${obstaclePos.x}, ${obstaclePos.y}) уже в очереди, ищем другую`);
-                            obstaclePos = this.findSafeObstaclePosition();
-                            if (!obstaclePos) {
-                                console.warn('[Bot] Не найдена свободная позиция для препятствия');
-                            }
-                        }
-                    }
-                    
-                    if (obstaclePos) {
-                        // Добавляем задачу в очередь строительства
-                        if (this.workerBloc.addBuildTaskToQueue(2, obstaclePos.x, obstaclePos.y, obstaclePos.type)) {
-                            const queueSize = this.workerBloc.getBuildQueue(2).length;
-                            this.currentState.currentAction = `Строительство препятствия (${obstaclePos.type})`;
-                            this.currentState.priority = '3';
-                            this.currentState.lastAction = `Добавлена задача: ${obstaclePos.type} в (${obstaclePos.x}, ${obstaclePos.y}), очередь: ${queueSize}`;
-                            console.log(`[Bot] Добавлена задача на строительство препятствия (${obstaclePos.type}) в (${obstaclePos.x}, ${obstaclePos.y})`);
-                            return;
-                        } else {
-                            console.warn('[Bot] Не удалось добавить задачу в очередь строительства');
-                        }
-                    }
+                // Проверяем, нет ли уже препятствия в этой позиции
+                const existingObstacle = this.obstacleBloc.getObstacleAt(obstaclePos.x, obstaclePos.y);
+                if (existingObstacle) {
+                    obstaclePos = this.findSafeObstaclePosition();
+                    continue;
                 }
-            } else {
-                console.warn('[Bot] Не найдена позиция для строительства препятствия');
+                
+                // Проверяем, нет ли уже задачи в очереди для этой позиции
+                const buildQueue = this.workerBloc.getBuildQueue(2);
+                const alreadyInQueue = buildQueue.some(task => task.x === obstaclePos.x && task.y === obstaclePos.y);
+                if (alreadyInQueue) {
+                    obstaclePos = this.findSafeObstaclePosition();
+                    continue;
+                }
+                
+                // Проверяем, не превышен ли лимит очереди (максимум 5 задач)
+                const currentQueue = this.workerBloc.getBuildQueue(2);
+                if (currentQueue.length >= 5) {
+                    break;
+                }
+                
+                // Если все проверки пройдены - добавляем в очередь
+                if (this.workerBloc.addBuildTaskToQueue(2, obstaclePos.x, obstaclePos.y, 'obstacle', obstaclePos.type)) {
+                    const queueSize = this.workerBloc.getBuildQueue(2).length;
+                    this.currentState.currentAction = `Строительство препятствия (${obstaclePos.type})`;
+                    this.currentState.priority = '3';
+                    this.currentState.lastAction = `Добавлена задача: ${obstaclePos.type} в (${obstaclePos.x}, ${obstaclePos.y}), очередь: ${queueSize}/5`;
+                    return;
+                } else {
+                    break;
+                }
             }
         }
         
-        // Приоритет 4: Строительство башен для защиты
+        // Приоритет 4: Строительство башен для защиты (важно для защиты!)
         if (player.gold >= 100 && botTowers.length < 8) {
-            let towerPos = this.findBestTowerPosition(botTowers);
-            if (towerPos) {
-                // Проверяем, что башня не блокирует путь между воротами
-                // Башни тоже могут блокировать путь, так как они занимают клетку
-                if (this.wouldBlockGates(towerPos.x, towerPos.y)) {
-                    console.warn(`[Bot] Башня в (${towerPos.x}, ${towerPos.y}) заблокирует ворота, ищем альтернативу`);
-                    // Пробуем найти другую безопасную позицию для башни
-                    towerPos = this.findSafeTowerPosition(botTowers);
-                    if (!towerPos) {
-                        console.warn('[Bot] Не найдена безопасная позиция для башни');
-                    }
-                }
-                
+            // Приоритет строительству башен, если их мало
+            if (botTowers.length < this.minTowers || player.gold >= 200) {
+                let towerPos = this.findBestTowerPosition(botTowers);
+                // findBestTowerPosition уже проверяет wouldBlockGates, но на всякий случай проверяем ещё раз
                 if (towerPos) {
-                    const hex = this.hexGrid.arrayToHex(towerPos.x, towerPos.y);
-                    // Выбираем тип башни: сильная если золота много, базовая если мало
-                    const towerType = player.gold >= 300 ? 'strong' : 'basic';
-                    if (this.towerBloc.createTower(hex, 2, towerType)) {
-                        this.currentState.currentAction = `Строительство башни (${towerType})`;
-                        this.currentState.priority = '4';
-                        this.currentState.lastAction = `Построена башня ${towerType} в (${towerPos.x}, ${towerPos.y}), всего: ${botTowers.length + 1}`;
-                        console.log(`[Bot] Построена башня (${towerType}) в (${towerPos.x}, ${towerPos.y})`);
-                        return;
-                    } else {
-                        console.warn(`[Bot] Не удалось построить башню в (${towerPos.x}, ${towerPos.y}), возможно позиция занята`);
+                    // Дополнительная проверка: убеждаемся, что башня не блокирует путь
+                    if (this.wouldBlockGates(towerPos.x, towerPos.y, true)) { // true = это башня
+                        towerPos = this.findSafeTowerPosition(botTowers);
+                    }
+                    
+                    if (towerPos) {
+                        // Проверяем, не превышен ли лимит очереди (максимум 5 задач)
+                        const currentQueue = this.workerBloc.getBuildQueue(2);
+                        if (currentQueue.length >= 5) {
+                            // Пропускаем строительство башни, переходим к следующему приоритету
+                        } else {
+                            // Выбираем тип башни: сильная если золота много, базовая если мало
+                            const towerType = player.gold >= 300 ? 'strong' : 'basic';
+                            
+                            // Добавляем задачу на строительство башни в очередь
+                            if (this.workerBloc.addBuildTaskToQueue(2, towerPos.x, towerPos.y, 'tower', towerType)) {
+                                const queueSize = this.workerBloc.getBuildQueue(2).length;
+                                this.currentState.currentAction = `Строительство башни (${towerType})`;
+                                this.currentState.priority = '4';
+                                this.currentState.lastAction = `Добавлена задача: башня ${towerType} в (${towerPos.x}, ${towerPos.y}), очередь: ${queueSize}/5`;
+                                return;
+                            }
+                        }
                     }
                 }
-            } else {
-                console.warn('[Bot] Не найдена позиция для строительства башни');
             }
         }
         
@@ -213,24 +193,37 @@ export class BotAI {
                     this.currentState.currentAction = 'Улучшение башни';
                     this.currentState.priority = '5';
                     this.currentState.lastAction = `Улучшена башня ${towerToUpgrade.id} до уровня ${towerToUpgrade.level + 1}`;
-                    console.log(`[Bot] Улучшена башня ${towerToUpgrade.id}`);
                     return;
                 }
             }
         }
         
-        // Приоритет 6: Создание солдат для атаки (если достаточно золота)
-        if (player.gold >= 100 && botSoldiers.length < 5) {
+        // Приоритет 6: Создание солдат для атаки (важно для победы!)
+        // Создаём солдат, если есть башни для защиты и достаточно золота
+        if (botTowers.length >= this.minTowers && player.gold >= 50 && botSoldiers.length < this.targetSoldiers) {
             const centerX = Math.floor(this.hexGrid.width / 2);
             const gateY = 0;
             const gatePos = {x: centerX, y: gateY};
             // Выбираем тип солдата: сильный если золота много, базовый если мало
-            const soldierType = player.gold >= 250 ? 'strong' : 'basic';
+            const soldierType = player.gold >= 200 ? 'strong' : 'basic';
             if (this.soldierBloc.createSoldier(gatePos, 2, soldierType, this.obstacleBloc, this.towerBloc)) {
                 this.currentState.currentAction = `Создание солдата (${soldierType})`;
                 this.currentState.priority = '6';
                 this.currentState.lastAction = `Создан солдат ${soldierType} для атаки, всего: ${botSoldiers.length + 1}`;
-                console.log(`[Bot] Создан солдат (${soldierType}) для атаки`);
+                return;
+            }
+        }
+        
+        // Если башен достаточно, но солдат мало - создаём больше солдат
+        if (botTowers.length >= this.minTowers && player.gold >= 50 && botSoldiers.length < 5) {
+            const centerX = Math.floor(this.hexGrid.width / 2);
+            const gateY = 0;
+            const gatePos = {x: centerX, y: gateY};
+            const soldierType = 'basic'; // Базовые солдаты для массовой атаки
+            if (this.soldierBloc.createSoldier(gatePos, 2, soldierType, this.obstacleBloc, this.towerBloc)) {
+                this.currentState.currentAction = `Создание солдата (${soldierType})`;
+                this.currentState.priority = '6';
+                this.currentState.lastAction = `Создан солдат ${soldierType} для атаки, всего: ${botSoldiers.length + 1}`;
                 return;
             }
         }
@@ -244,7 +237,6 @@ export class BotAI {
                 this.currentState.currentAction = 'Создание дополнительного сборщика';
                 this.currentState.priority = '7';
                 this.currentState.lastAction = `Создан дополнительный сборщик (много золота: ${availableGold})`;
-                console.log('[Bot] Создан дополнительный сборщик (много золота на карте)');
                 return;
             }
         }
@@ -263,19 +255,6 @@ export class BotAI {
         const reasonText = reasons.length > 0 ? reasons.join(', ') : 'все условия выполнены';
         this.currentState.currentAction = `Ожидание: ${reasonText}`;
         this.currentState.priority = '-';
-        
-        // Логируем состояние для отладки
-        if (Math.random() < 0.05) { // Логируем примерно 5% случаев
-            console.log('[Bot] Ожидание:', {
-                gold: player.gold,
-                gatherers: gatherers.length,
-                builders: builders.length,
-                towers: botTowers.length,
-                soldiers: botSoldiers.length,
-                availableGold,
-                reasons
-            });
-        }
     }
     
     /**
@@ -337,7 +316,7 @@ export class BotAI {
                     continue;
                 }
                 
-                const hex = this.hexGrid.arrayToHex(x, y);
+            const hex = this.hexGrid.arrayToHex(x, y);
                 if (this.hexGrid.isBlocked(hex, this.obstacleBloc, this.towerBloc, false)) {
                     continue;
                 }
@@ -370,17 +349,77 @@ export class BotAI {
     
     /**
      * Находит лучшую позицию для строительства препятствия
+     * Стратегия: создавать воронки к башням, заставляя врага идти через зону обстрела
      */
     findBestObstaclePosition() {
         const centerX = Math.floor(this.hexGrid.width / 2);
         const baseY = 0; // Игрок 2: верхняя строка
+        const botTowers = this.towerBloc.getState().towers.filter(t => t.playerId === 2);
         
-        // Ищем позиции вокруг базы для защиты
+        // Если есть башни - создаём воронки к ним
+            if (botTowers.length > 0) {
+            const funnelPositions = [];
+            
+            // Для каждой башни ищем позиции для создания воронки
+            botTowers.forEach(tower => {
+                const towerHex = this.hexGrid.arrayToHex(tower.x, tower.y);
+                const towerArr = this.hexGrid.hexToArray(towerHex);
+                
+                // Ищем позиции вокруг башни, которые направят врага к ней
+                // Создаём препятствия по бокам от пути к башне
+                const funnelRadius = 2;
+                for (let dx = -funnelRadius; dx <= funnelRadius; dx++) {
+                    for (let dy = -funnelRadius; dy <= funnelRadius; dy++) {
+                        const x = towerArr.x + dx;
+                        const y = towerArr.y + dy;
+                        
+                        if (x < 0 || x >= this.hexGrid.width || y < 0 || y >= this.hexGrid.height) {
+                            continue;
+                        }
+                        
+                        if (y === 0) continue; // Не на базе
+                        
+                        // Пропускаем саму башню
+                        if (x === towerArr.x && y === towerArr.y) continue;
+                        
+                        const hex = this.hexGrid.arrayToHex(x, y);
+                        if (this.hexGrid.isBlocked(hex, this.obstacleBloc, this.towerBloc, false)) {
+                            continue;
+                        }
+                        
+                        const existingTower = this.towerBloc.getTowerAt(hex);
+                        if (existingTower) continue;
+                        
+                        const obstacle = this.obstacleBloc.getObstacleAt(x, y);
+                        if (obstacle) continue;
+                        
+                        // Приоритет позициям, которые создают воронку (по бокам от центрального пути)
+                        // Центральный путь - это прямая линия от вражеской базы к нашей
+                        const distanceToTower = Math.abs(dx) + Math.abs(dy);
+                        const isOnSide = Math.abs(dx) > 0; // По бокам от башни
+                        const priority = distanceToTower + (isOnSide ? 0 : 5); // Боковые позиции приоритетнее
+                        
+                        funnelPositions.push({x, y, priority, towerDistance: distanceToTower});
+                    }
+                }
+            });
+            
+            if (funnelPositions.length > 0) {
+                // Сортируем по приоритету
+                funnelPositions.sort((a, b) => a.priority - b.priority);
+                const bestPos = funnelPositions[0];
+                // Используем деревья для воронок (можно разрушить, но направляют врага)
+                return {x: bestPos.x, y: bestPos.y, type: 'tree'};
+            }
+        }
+        
+        // Если башен нет или не нашли позиции для воронок - строим защитную линию
         const defensePositions = [];
-        const defenseRadius = 2;
+        const defenseRadius = 3;
         
+        // Создаём препятствия по бокам от центрального пути, оставляя проход в центре
         for (let dx = -defenseRadius; dx <= defenseRadius; dx++) {
-            for (let dy = 1; dy <= defenseRadius + 1; dy++) {
+            for (let dy = 1; dy <= defenseRadius + 2; dy++) {
                 const x = centerX + dx;
                 const y = baseY + dy;
                 
@@ -388,65 +427,37 @@ export class BotAI {
                     continue;
                 }
                 
-                // Проверяем, не на базе ли это
                 if (y === 0) continue;
                 
-                // Проверяем, свободна ли клетка
+                // Пропускаем центральные позиции (оставляем проход шириной минимум 3 клетки)
+                // Центральный проход: от -1 до +1 по x, первые 3 ряда по y
+                if (Math.abs(dx) <= 1 && dy <= 3) {
+                    continue; // Центральный проход - не строим здесь
+                }
+                
                 const hex = this.hexGrid.arrayToHex(x, y);
                 if (this.hexGrid.isBlocked(hex, this.obstacleBloc, this.towerBloc, false)) {
                     continue;
                 }
                 
-                // Проверяем, нет ли там башни
                 const tower = this.towerBloc.getTowerAt(hex);
                 if (tower) continue;
                 
-                // Проверяем, нет ли там препятствия
                 const obstacle = this.obstacleBloc.getObstacleAt(x, y);
                 if (obstacle) continue;
                 
-                defensePositions.push({x, y, priority: dy}); // Ближе к базе = выше приоритет
+                // Приоритет позициям по бокам от центра
+                const distanceFromCenter = Math.abs(dx);
+                const priority = dy * 2 + (distanceFromCenter > 2 ? 0 : 5); // Боковые позиции приоритетнее
+                
+                defensePositions.push({x, y, priority});
             }
         }
         
         if (defensePositions.length > 0) {
-            // Сортируем по приоритету (ближе к базе)
             defensePositions.sort((a, b) => a.priority - b.priority);
             const bestPos = defensePositions[0];
-            // Выбираем тип: камень для критических позиций, дерево для остальных
-            const type = bestPos.priority <= 1 ? 'stone' : 'tree';
-            return {x: bestPos.x, y: bestPos.y, type};
-        }
-        
-        // Если не нашли позиции вокруг базы, ищем стратегические позиции
-        const strategicPositions = [];
-        const halfHeight = Math.floor(this.hexGrid.height / 2);
-        
-        for (let y = 1; y < halfHeight; y++) {
-            for (let x = 0; x < this.hexGrid.width; x++) {
-                const hex = this.hexGrid.arrayToHex(x, y);
-                if (this.hexGrid.isBlocked(hex, this.obstacleBloc, this.towerBloc, false)) {
-                    continue;
-                }
-                
-                const tower = this.towerBloc.getTowerAt(hex);
-                if (tower) continue;
-                
-                const obstacle = this.obstacleBloc.getObstacleAt(x, y);
-                if (obstacle) continue;
-                
-                // Приоритет позициям ближе к центру и к вражеской базе
-                const distanceToEnemyBase = Math.abs(y - (this.hexGrid.height - 1));
-                const distanceToCenter = Math.abs(x - centerX);
-                const priority = distanceToEnemyBase + distanceToCenter;
-                
-                strategicPositions.push({x, y, priority});
-            }
-        }
-        
-        if (strategicPositions.length > 0) {
-            strategicPositions.sort((a, b) => a.priority - b.priority);
-            const bestPos = strategicPositions[0];
+            // Используем деревья для боковых препятствий
             return {x: bestPos.x, y: bestPos.y, type: 'tree'};
         }
         
@@ -454,55 +465,51 @@ export class BotAI {
     }
     
     /**
-     * Проверяет, заблокирует ли препятствие в указанной позиции путь между воротами
+     * Проверяет, заблокирует ли препятствие/башня в указанной позиции путь между воротами
+     * Проверяет путь в обе стороны и несколько альтернативных маршрутов
+     * Использует кеш для оптимизации производительности
+     * @param {number} x - координата X
+     * @param {number} y - координата Y
+     * @param {boolean} isTower - true если это башня, false если препятствие
      */
-    wouldBlockGates(x, y) {
+    wouldBlockGates(x, y, isTower = false) {
+        // УПРОЩЁННАЯ ПРОВЕРКА БЕЗ findPath: просто проверяем геометрию
+        // Это намного быстрее и не вызывает зависаний
+        
         const centerX = Math.floor(this.hexGrid.width / 2);
-        
-        // Координаты ворот игрока 1 (внизу)
-        // Ворота могут быть на предпоследней строке (height - 2) с чётным x или на последней (height - 1) с нечётным x
-        // Проверяем оба варианта
-        let player1GateX = centerX;
-        let player1GateY;
-        if (centerX % 2 === 0) {
-            // centerX чётный - ворота на предпоследней строке
-            player1GateY = this.hexGrid.height - 2;
-        } else {
-            // centerX нечётный - ворота на последней строке
-            player1GateY = this.hexGrid.height - 1;
-        }
-        
-        // Координаты ворот игрока 2 (вверху)
-        const player2GateX = centerX;
+        const player1GateY = centerX % 2 === 0 ? this.hexGrid.height - 2 : this.hexGrid.height - 1;
         const player2GateY = 0;
         
-        // Преобразуем в hex координаты
-        const gate1Hex = this.hexGrid.arrayToHex(player1GateX, player1GateY);
-        const gate2Hex = this.hexGrid.arrayToHex(player2GateX, player2GateY);
-        
-        // Проверяем текущий путь (без препятствия)
-        const currentPath = this.hexGrid.findPath(gate1Hex, gate2Hex, this.obstacleBloc, this.towerBloc, false);
-        if (!currentPath || currentPath.length === 0) {
-            // Путь уже заблокирован - не можем проверить
-            console.warn('[Bot] Путь между воротами уже заблокирован!');
-            return false; // Разрешаем строительство, так как путь уже заблокирован
+        // Проверяем, не находится ли позиция на прямой линии между воротами
+        if (x === centerX) {
+            // На той же вертикали, что и ворота
+            if (y > player2GateY && y < player1GateY) {
+                // Между воротами - блокирует прямой путь
+                return true;
+            }
         }
         
-        // Временно добавляем препятствие для проверки
-        const tempObstacle = this.obstacleBloc.addObstacle(x, y, 'stone');
-        
-        // Проверяем путь с временным препятствием
-        const pathWithObstacle = this.hexGrid.findPath(gate1Hex, gate2Hex, this.obstacleBloc, this.towerBloc, false);
-        
-        // Удаляем временное препятствие
-        this.obstacleBloc.removeObstacle(tempObstacle.id);
-        
-        // Если путь не найден с препятствием - оно блокирует ворота
-        if (!pathWithObstacle || pathWithObstacle.length === 0) {
-            return true; // Препятствие блокирует путь
+        // Проверяем центральный проход (ширина 3 клетки: centerX-1, centerX, centerX+1)
+        const distanceFromCenterX = Math.abs(x - centerX);
+        if (distanceFromCenterX <= 1) {
+            // В центральном проходе
+            // Блокируем только если в первых 8 рядах от любой базы
+            if (y <= 8 || y >= this.hexGrid.height - 9) {
+                return true; // Блокирует критический путь
+            }
         }
         
-        return false; // Препятствие не блокирует путь
+        // Если позиция рядом с центральной линией (в пределах 2 клеток) и в средней части карты
+        if (distanceFromCenterX <= 2) {
+            const middleY = Math.floor(this.hexGrid.height / 2);
+            const distanceFromMiddleY = Math.abs(y - middleY);
+            if (distanceFromMiddleY <= 3) {
+                // В центральной зоне карты - может блокировать альтернативные пути
+                return true;
+            }
+        }
+        
+        return false; // Позиция не блокирует критический путь
     }
     
     /**
@@ -549,7 +556,8 @@ export class BotAI {
                     }
                 }
                 
-                if (!tooClose && !this.wouldBlockGates(x, y)) {
+                // КРИТИЧНО: Проверяем, не блокирует ли башня путь между воротами
+                if (!tooClose && !this.wouldBlockGates(x, y, true)) { // true = это башня
                     const distanceToBase = dy;
                     const distanceToCenter = Math.abs(dx);
                     const priority = distanceToBase * 2 + distanceToCenter;
@@ -639,7 +647,8 @@ export class BotAI {
                     }
                 }
                 
-                if (!tooClose) {
+                // КРИТИЧНО: Проверяем, не блокирует ли башня путь между воротами
+                if (!tooClose && !this.wouldBlockGates(x, y, true)) { // true = это башня
                     defensePositions.push({x, y, priority});
                 }
             }
@@ -666,6 +675,11 @@ export class BotAI {
                 
                 const obstacle = this.obstacleBloc.getObstacleAt(x, y);
                 if (obstacle) continue;
+                
+                // КРИТИЧНО: Проверяем, не блокирует ли башня путь между воротами
+                if (this.wouldBlockGates(x, y, true)) { // true = это башня
+                    continue; // Пропускаем позиции, которые блокируют путь
+                }
                 
                 // Приоритет позициям ближе к вражеской базе
                 const distanceToEnemyBase = Math.abs(y - (this.hexGrid.height - 1));

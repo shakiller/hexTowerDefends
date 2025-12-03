@@ -82,7 +82,7 @@
         </div>
 
         <div id="game-screen" class="screen">
-            <div id="game-header">
+            <div id="game-header" style="position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: rgba(0,0,0,0.9);">
                 <div id="player1-info" class="player-info">
                     <h3>Игрок 1</h3>
                     <div class="resource">Золото: <span id="p1-gold">500</span></div>
@@ -136,8 +136,8 @@
                 </div>
             </div>
 
-            <div style="display: flex; gap: 10px; flex: 1; width: 100%;">
-                <div id="game-board-container" style="flex: 0 0 80%; width: 80%;">
+            <div style="display: flex; gap: 10px; flex: 1; width: 100%; margin-top: 140px; margin-bottom: 220px;">
+                <div id="game-board-container" style="flex: 0 0 80%; width: 80%; overflow: auto; max-height: calc(100vh - 360px);">
                     <canvas id="game-canvas"></canvas>
                 </div>
                 
@@ -373,7 +373,7 @@
                 </div>
             </div>
 
-            <div id="game-panel">
+            <div id="game-panel" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000; background: rgba(0,0,0,0.9);">
                 <div id="tower-panel" class="panel-section">
                     <h4>Башни</h4>
                     <div class="tower-options">
@@ -452,10 +452,12 @@
             </div>
         </div>
 
-        <div id="victory-screen" class="screen">
-            <h1 id="victory-text"></h1>
-            <button id="btn-restart" class="menu-btn">Начать заново</button>
-            <button id="btn-back-menu" class="menu-btn">В меню</button>
+        <div id="victory-popup" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.95); color: white; padding: 40px; border-radius: 15px; border: 3px solid #4a90e2; z-index: 10000; min-width: 400px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <h1 id="victory-text" style="font-size: 2.5em; margin-bottom: 30px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); color: #4a90e2;"></h1>
+            <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                <button id="btn-restart" class="menu-btn" style="min-width: 200px;">Начать заново</button>
+                <button id="btn-back-menu" class="menu-btn" style="min-width: 200px;">В меню</button>
+            </div>
         </div>
     </div>
 
