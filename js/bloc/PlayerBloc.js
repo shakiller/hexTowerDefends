@@ -7,7 +7,8 @@ export class PlayerBloc {
             selectedObstacleType: null, // 'stone' или 'tree'
             selectedCell: null,
             testNeighborsMode: false, // Режим тестирования соседей
-            testSelectedHex: null // Выбранный hex для тестирования
+            testSelectedHex: null, // Выбранный hex для тестирования
+            testTowersMode: false // Режим тестирования башен (стрельба по кругу)
         };
         this.listeners = [];
     }
@@ -67,6 +68,11 @@ export class PlayerBloc {
 
     setTestSelectedHex(hex) {
         this.state.testSelectedHex = hex;
+        this.emit();
+    }
+
+    toggleTestTowersMode() {
+        this.state.testTowersMode = !this.state.testTowersMode;
         this.emit();
     }
 

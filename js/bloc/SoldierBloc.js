@@ -8,6 +8,51 @@ export class SoldierBloc {
         this.listeners = [];
         this.soldierIdCounter = 0;
         this.speedMultiplier = 0.05; // Глобальный множитель скорости солдат (по умолчанию 0.05)
+        
+        // Настройки атаки солдат
+        this.attackSettings = {
+            basic: {
+                fireRate: 1000,  // Скорость стрельбы (мс между выстрелами)
+                damage: 5        // Урон за выстрел
+            },
+            strong: {
+                fireRate: 1500,  // Сильный солдат стреляет медленнее
+                damage: 10        // Но наносит больше урона
+            }
+        };
+        
+        // Настройки здоровья солдат
+        this.healthSettings = {
+            basic: 50,   // Здоровье слабого солдата
+            strong: 100   // Здоровье сильного солдата
+        };
+    }
+    
+    getAttackSettings() {
+        return {
+            basic: { ...this.attackSettings.basic },
+            strong: { ...this.attackSettings.strong }
+        };
+    }
+    
+    setAttackSetting(type, setting, value) {
+        if (this.attackSettings[type] && this.attackSettings[type].hasOwnProperty(setting)) {
+            if (setting === 'fireRate') {
+                this.attackSettings[type][setting] = Math.max(100, value); // Минимум 100мс
+            } else if (setting === 'damage') {
+                this.attackSettings[type][setting] = Math.max(1, value); // Минимум 1 урон
+            }
+        }
+    }
+    
+    getHealthSettings() {
+        return { ...this.healthSettings };
+    }
+    
+    setHealthSetting(type, value) {
+        if (this.healthSettings.hasOwnProperty(type)) {
+            this.healthSettings[type] = Math.max(1, value); // Минимум 1 HP
+        }
     }
 
     subscribe(listener) {
@@ -67,6 +112,7 @@ export class SoldierBloc {
             y: arrPos.y,
             moveProgress: 0, // Прогресс движения от текущей ячейки к следующей (0.0 - 1.0)
             direction: 0, // Направление движения в радианах
+            lastPathRecalculation: 0, // Время последнего пересчёта пути (в миллисекундах)
             targetX,
             targetY,
             type,
@@ -74,7 +120,16 @@ export class SoldierBloc {
             health: soldierConfig.health,
             maxHealth: soldierConfig.health,
             damage: soldierConfig.damage,
-            speed: soldierConfig.speed
+            speed: soldierConfig.speed,
+            canDestroyTrees: soldierConfig.canDestroyTrees || false,
+            destroyingTree: false,
+            treeTarget: null,
+            treeDirection: 0,
+            treeHitProgress: 0,
+            treeHitsCount: 0,
+            originalPath: null,
+            originalTargetX: targetX,
+            originalTargetY: targetY
         };
 
         this.state.soldiers.push(soldier);
@@ -117,8 +172,20 @@ export class SoldierBloc {
 
     getSoldierConfig(type) {
         const baseConfigs = {
-            basic: { health: 50, damage: 5, speed: 1.0, cost: 50 },
-            strong: { health: 100, damage: 10, speed: 1.5, cost: 100 }
+            basic: { 
+                health: this.healthSettings.basic, 
+                damage: 5, 
+                speed: 1.0, 
+                cost: 50, 
+                canDestroyTrees: false 
+            },
+            strong: { 
+                health: this.healthSettings.strong, 
+                damage: 10, 
+                speed: 0.6, 
+                cost: 100, 
+                canDestroyTrees: true 
+            } // Медленнее, но может ломать деревья
         };
         const config = baseConfigs[type] || baseConfigs.basic;
         // Применяем глобальный множитель скорости
@@ -132,8 +199,8 @@ export class SoldierBloc {
         this.speedMultiplier = multiplier;
         // Обновляем скорость существующих солдат
         this.state.soldiers.forEach(soldier => {
-            const baseSpeed = soldier.type === 'strong' ? 1.5 : 1.0;
-            soldier.speed = baseSpeed * this.speedMultiplier;
+            const soldierConfig = this.getSoldierConfig(soldier.type);
+            soldier.speed = soldierConfig.speed; // Используем правильную скорость из конфига
         });
         this.emit();
     }
@@ -147,9 +214,13 @@ export class SoldierBloc {
         });
         
         const soldiersToRemove = [];
+        const currentTime = performance.now();
         
         // Ограничиваем deltaTime, чтобы избежать больших скачков при первом кадре
         const normalizedDeltaTime = Math.min(deltaTime, 100); // Максимум 100мс за кадр
+        
+        // Интервал пересчёта пути (в миллисекундах) - пересчитываем каждые 500мс
+        const PATH_RECALCULATION_INTERVAL = 500;
         
         // Отладка: логируем количество солдат перед обновлением
         if (this.state.soldiers.length > 0) {
@@ -159,6 +230,117 @@ export class SoldierBloc {
         }
         
         this.state.soldiers.forEach(soldier => {
+            // Обработка режима разрушения дерева
+            if (soldier.destroyingTree && soldier.treeTarget) {
+                const treeObstacle = obstacleBloc ? obstacleBloc.getObstacleAt(soldier.treeTarget.x, soldier.treeTarget.y) : null;
+                
+                if (!treeObstacle || treeObstacle.type !== 'tree') {
+                    // Дерево уже разрушено или не существует - возвращаемся к оригинальному пути
+                    soldier.destroyingTree = false;
+                    soldier.treeTarget = null;
+                    soldier.treeHitProgress = 0;
+                    soldier.treeHitsCount = 0;
+                    if (soldier.originalPath) {
+                        soldier.path = soldier.originalPath;
+                        soldier.targetX = soldier.originalTargetX;
+                        soldier.targetY = soldier.originalTargetY;
+                        soldier.originalPath = null;
+                        // Находим ближайшую ячейку в пути
+                        const currentArr = this.hexGrid.hexToArray(this.hexGrid.arrayToHex(soldier.x, soldier.y));
+                        let closestIndex = 0;
+                        let minDistance = Infinity;
+                        soldier.path.forEach((hex, index) => {
+                            const hexArr = this.hexGrid.hexToArray(hex);
+                            const dx = hexArr.x - currentArr.x;
+                            const dy = hexArr.y - currentArr.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            if (distance < minDistance) {
+                                minDistance = distance;
+                                closestIndex = index;
+                            }
+                        });
+                        soldier.currentHexIndex = closestIndex;
+                        soldier.moveProgress = 0;
+                    }
+                    // Принудительно пересчитываем пути для всех солдат, так как препятствие изменилось
+                    this.state.soldiers.forEach(s => {
+                        if (s.id !== soldier.id && s.path) {
+                            s.lastPathRecalculation = 0; // Принудительный пересчёт
+                        }
+                    });
+                    return; // Пропускаем обработку движения в этом кадре
+                }
+                
+                // Проверяем, достигли ли мы ячейки рядом с деревом
+                const currentHexIndex = Math.floor(soldier.currentHexIndex);
+                if (soldier.path && currentHexIndex >= soldier.path.length - 1) {
+                    // Достигли ячейки рядом с деревом - начинаем разрушение
+                    const currentHex = soldier.path[currentHexIndex];
+                    const currentArr = this.hexGrid.hexToArray(currentHex);
+                    
+                    // Проверяем, что мы рядом с деревом
+                    const treeArr = { x: soldier.treeTarget.x, y: soldier.treeTarget.y };
+                    const dx = treeArr.x - currentArr.x;
+                    const dy = treeArr.y - currentArr.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance <= 1.5) { // Рядом с деревом (соседняя ячейка)
+                        // Анимация удара
+                        // Время одного удара = время прохождения одной ячейки
+                        // Для сильного солдата скорость 0.6, значит время прохождения ячейки больше
+                        const baseSpeed = soldier.type === 'strong' ? 0.6 : 1.0;
+                        // Расстояние между центрами ячеек примерно hexSize * sqrt(3) * 0.87
+                        const cellDistance = this.hexGrid.hexSize * Math.sqrt(3) * 0.87;
+                        // Скорость в пикселях за миллисекунду
+                        const pixelSpeed = baseSpeed * this.speedMultiplier;
+                        // Время прохождения одной ячейки в миллисекундах
+                        const cellTravelTime = cellDistance / pixelSpeed;
+                        const HIT_DURATION = cellTravelTime; // Длительность одного удара = время прохождения ячейки
+                        const hitsNeeded = obstacleBloc.getDurabilitySettings().tree;
+                        
+                        soldier.treeHitProgress += normalizedDeltaTime / HIT_DURATION;
+                        
+                        if (soldier.treeHitProgress >= 1.0) {
+                            // Один удар завершён
+                            soldier.treeHitProgress = 0;
+                            soldier.treeHitsCount++;
+                            
+                            // Наносим урон дереву
+                            const destroyed = obstacleBloc.damageObstacle(soldier.treeTarget.id, 1);
+                            
+                            if (destroyed || soldier.treeHitsCount >= hitsNeeded) {
+                                // Дерево разрушено
+                                soldier.destroyingTree = false;
+                                soldier.treeTarget = null;
+                                soldier.treeHitProgress = 0;
+                                soldier.treeHitsCount = 0;
+                                
+                                // Возвращаемся к оригинальному пути
+                                if (soldier.originalPath) {
+                                    soldier.path = soldier.originalPath;
+                                    soldier.targetX = soldier.originalTargetX;
+                                    soldier.targetY = soldier.originalTargetY;
+                                    soldier.originalPath = null;
+                                    const currentHexForPath = this.hexGrid.arrayToHex(soldier.x, soldier.y);
+                                    const targetHex = this.hexGrid.arrayToHex(soldier.targetX, soldier.targetY);
+                                    soldier.path = this.hexGrid.findPath(currentHexForPath, targetHex, obstacleBloc, towerBloc);
+                                    soldier.currentHexIndex = 0;
+                                    soldier.moveProgress = 0;
+                                }
+                                
+                                // Принудительно пересчитываем пути для всех солдат
+                                this.state.soldiers.forEach(s => {
+                                    if (s.id !== soldier.id && s.path) {
+                                        s.lastPathRecalculation = 0;
+                                    }
+                                });
+                            }
+                        }
+                        return; // Не двигаемся, только бьём
+                    }
+                }
+            }
+            
             // Если путь ещё не вычислен, вычисляем его
             if (!soldier.path || soldier.path.length === 0) {
                 console.log(`Вычисляем путь для солдата ${soldier.id}`, {
@@ -179,6 +361,7 @@ export class SoldierBloc {
                 soldier.y = soldier.startY;
                 soldier.moveProgress = 0;
                 soldier.direction = 0;
+                soldier.lastPathRecalculation = performance.now();
             }
             
             // Если путь пустой после попытки вычисления, возвращаем деньги и удаляем солдата
@@ -213,14 +396,90 @@ export class SoldierBloc {
             const currentArr = this.hexGrid.hexToArray(currentHex);
             const nextArr = this.hexGrid.hexToArray(nextHex);
             
+            // Периодически пересчитываем путь, чтобы учитывать изменения препятствий
+            // НО только если солдат уже прошёл хотя бы одну ячейку, чтобы избежать зацикливания
+            const timeSinceLastRecalculation = currentTime - (soldier.lastPathRecalculation || 0);
+            const needsPeriodicRecalculation = timeSinceLastRecalculation >= PATH_RECALCULATION_INTERVAL && currentHexIndex > 0;
+            
+            // Проверяем, не заблокирован ли следующий шаг пути
+            // Если заблокирован или прошло достаточно времени - пересчитываем путь от текущей позиции
+            const nextStepBlocked = this.hexGrid.isBlocked(nextHex, obstacleBloc, towerBloc);
+            if (nextStepBlocked || needsPeriodicRecalculation) {
+                if (nextStepBlocked) {
+                    console.log(`⚠️ Следующий шаг пути для солдата ${soldier.id} заблокирован, пересчитываем путь`);
+                } else {
+                    console.log(`🔄 Периодический пересчёт пути для солдата ${soldier.id}`);
+                }
+                
+                // Используем текущую ячейку из пути как стартовую позицию для нового пути
+                // Это гарантирует, что мы не вернёмся назад
+                const currentHexForPath = currentHex; // Используем текущую ячейку из пути
+                const targetHex = this.hexGrid.arrayToHex(soldier.targetX, soldier.targetY);
+                soldier.path = this.hexGrid.findPath(currentHexForPath, targetHex, obstacleBloc, towerBloc);
+                soldier.lastPathRecalculation = currentTime;
+                
+                // Если путь не найден, удаляем солдата
+                if (!soldier.path || soldier.path.length === 0) {
+                    console.log(`❌ Не удалось найти новый путь для солдата ${soldier.id}`);
+                    const soldierConfig = this.getSoldierConfig(soldier.type);
+                    this.gameBloc.updatePlayerGold(soldier.playerId, soldierConfig.cost);
+                    soldiersToRemove.push(soldier.id);
+                    return;
+                }
+                
+                // Проверяем, что первая ячейка нового пути совпадает с текущей
+                // Если нет - ищем текущую ячейку в новом пути
+                const firstHexInNewPath = soldier.path[0];
+                const firstHexArr = this.hexGrid.hexToArray(firstHexInNewPath);
+                const currentHexArr = this.hexGrid.hexToArray(currentHex);
+                
+                if (firstHexArr.x === currentHexArr.x && firstHexArr.y === currentHexArr.y) {
+                    // Первая ячейка совпадает с текущей - всё хорошо, продолжаем с индекса 0
+                    soldier.currentHexIndex = 0;
+                } else {
+                    // Ищем текущую ячейку в новом пути
+                    let foundIndex = -1;
+                    for (let i = 0; i < soldier.path.length; i++) {
+                        const hexArr = this.hexGrid.hexToArray(soldier.path[i]);
+                        if (hexArr.x === currentHexArr.x && hexArr.y === currentHexArr.y) {
+                            foundIndex = i;
+                            break;
+                        }
+                    }
+                    
+                    if (foundIndex >= 0) {
+                        soldier.currentHexIndex = foundIndex;
+                    } else {
+                        // Текущая ячейка не найдена в новом пути - начинаем с начала
+                        soldier.currentHexIndex = 0;
+                    }
+                }
+                
+                soldier.moveProgress = 0;
+                console.log(`✅ Новый путь для солдата ${soldier.id} найден, длина: ${soldier.path.length}, начинаем с индекса ${soldier.currentHexIndex}`);
+            }
+            
+            // Проверяем, что путь всё ещё валиден после пересчёта
+            if (!soldier.path || soldier.path.length === 0) {
+                return;
+            }
+            
+            // Обновляем ссылки на текущую и следующую ячейки (на случай если путь пересчитан)
+            const updatedCurrentHex = soldier.path[Math.floor(soldier.currentHexIndex)];
+            const updatedNextHex = soldier.path[Math.floor(soldier.currentHexIndex) + 1];
+            if (!updatedCurrentHex || !updatedNextHex) {
+                return;
+            }
+            
             // Движение только от центра одной ячейки к центру другой
             // Устанавливаем текущую позицию точно в центр текущей ячейки
-            soldier.x = currentArr.x;
-            soldier.y = currentArr.y;
+            const updatedCurrentArr = this.hexGrid.hexToArray(updatedCurrentHex);
+            soldier.x = updatedCurrentArr.x;
+            soldier.y = updatedCurrentArr.y;
             
             // Вычисляем расстояние до следующей ячейки в пикселях
-            const currentPixel = this.hexGrid.hexToPixel(currentHex);
-            const nextPixel = this.hexGrid.hexToPixel(nextHex);
+            const currentPixel = this.hexGrid.hexToPixel(updatedCurrentHex);
+            const nextPixel = this.hexGrid.hexToPixel(updatedNextHex);
             const pixelDx = nextPixel.x - currentPixel.x;
             const pixelDy = nextPixel.y - currentPixel.y;
             const pixelDistance = Math.sqrt(pixelDx * pixelDx + pixelDy * pixelDy);
@@ -245,22 +504,64 @@ export class SoldierBloc {
                 soldier.y = nextArr.y;
             }
 
-            // Проверка попадания под огонь башен
-            const towers = towerBloc.getState().towers;
-            towers.forEach(tower => {
-                if (tower.playerId !== soldier.playerId) {
-                    const towerDx = soldier.x - tower.x;
-                    const towerDy = soldier.y - tower.y;
-                    const towerDistance = Math.sqrt(towerDx * towerDx + towerDy * towerDy);
+            // Атака солдата по башням
+            if (towerBloc) {
+                const currentTime = performance.now();
+                const timeSinceLastAttack = currentTime - (soldier.lastAttackTime || 0);
+                
+                // Обновляем настройки атаки из текущих настроек
+                if (soldier.type === 'basic') {
+                    soldier.attackFireRate = this.attackSettings.basic.fireRate;
+                    soldier.attackDamage = this.attackSettings.basic.damage;
+                } else if (soldier.type === 'strong') {
+                    soldier.attackFireRate = this.attackSettings.strong.fireRate;
+                    soldier.attackDamage = this.attackSettings.strong.damage;
+                }
+                
+                // Проверяем, может ли солдат атаковать
+                if (timeSinceLastAttack >= soldier.attackFireRate) {
+                    const soldierHex = this.hexGrid.arrayToHex(soldier.x, soldier.y);
+                    const towers = towerBloc.getState().towers;
                     
-                    if (towerDistance <= tower.range) {
-                        soldier.health -= tower.damage * normalizedDeltaTime * 0.01;
-                        if (soldier.health <= 0) {
-                            soldiersToRemove.push(soldier.id);
+                    // Ищем ближайшую вражескую башню в соседних клетках
+                    let closestTower = null;
+                    let minDistance = Infinity;
+                    
+                    towers.forEach(tower => {
+                        if (tower.playerId === soldier.playerId) return; // Не атакуем свои башни
+                        
+                        const towerHex = this.hexGrid.arrayToHex(tower.x, tower.y);
+                        const distance = this.hexGrid.hexDistance(soldierHex, towerHex);
+                        
+                        // Солдат может атаковать только соседние башни (расстояние <= 1)
+                        if (distance <= 1 && distance < minDistance) {
+                            minDistance = distance;
+                            closestTower = tower;
                         }
+                    });
+                    
+                    if (closestTower) {
+                        // Атакуем башню
+                        soldier.lastAttackTime = currentTime;
+                        soldier.attackTarget = {
+                            x: closestTower.x,
+                            y: closestTower.y,
+                            time: currentTime
+                        };
+                        
+                        // Наносим урон башне
+                        towerBloc.damageTower(closestTower.id, soldier.attackDamage);
+                    } else {
+                        soldier.attackTarget = null;
                     }
                 }
-            });
+            }
+            
+            // Урон от башен обрабатывается в TowerBloc.updateTowers()
+            // Здесь только проверяем, не погиб ли солдат
+            if (soldier.health <= 0) {
+                soldiersToRemove.push(soldier.id);
+            }
         });
         
         // Удаляем солдат, которые достигли цели или погибли

@@ -4,6 +4,24 @@ export class ObstacleBloc {
             obstacles: []
         };
         this.listeners = [];
+        
+        // Настройки прочности объектов (настраиваемые параметры)
+        this.durabilitySettings = {
+            tree: 25,
+            towerBasic: 50,
+            towerStrong: 100,
+            base: 100
+        };
+    }
+    
+    getDurabilitySettings() {
+        return { ...this.durabilitySettings };
+    }
+    
+    setDurabilitySetting(type, value) {
+        if (this.durabilitySettings.hasOwnProperty(type)) {
+            this.durabilitySettings[type] = Math.max(1, value);
+        }
     }
 
     subscribe(listener) {
@@ -24,7 +42,8 @@ export class ObstacleBloc {
             x,
             y,
             type,
-            health: type === 'stone' ? Infinity : 100 // Камни неуничтожимы
+            maxHealth: type === 'stone' ? Infinity : this.durabilitySettings.tree,
+            health: type === 'stone' ? Infinity : this.durabilitySettings.tree // Камни неуничтожимы
         };
         
         this.state.obstacles.push(obstacle);

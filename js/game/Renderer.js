@@ -139,12 +139,29 @@ export class Renderer {
         const offsetY = this.hexGrid.hexSize;
         this.ctx.translate(offsetX, offsetY);
         
+        const currentTime = performance.now();
+        
         towers.forEach(tower => {
             const hex = this.hexGrid.arrayToHex(tower.x, tower.y);
             const pixelPos = this.hexGrid.hexToPixel(hex);
             
+            // Размер башни зависит от типа
+            const isStrong = tower.type === 'strong';
+            const baseSize = this.hexGrid.hexSize * 0.6;
+            const size = isStrong ? baseSize * 1.3 : baseSize; // Большая башня больше
+            
+            // Визуализация радиуса в тестовом режиме
+            if (tower.testAngle !== undefined) {
+                // Рисуем окружность радиуса
+                const radiusInPixels = tower.range * this.hexGrid.hexSize * 2;
+                this.ctx.strokeStyle = 'rgba(255, 255, 0, 0.3)';
+                this.ctx.lineWidth = 1;
+                this.ctx.beginPath();
+                this.ctx.arc(pixelPos.x, pixelPos.y, radiusInPixels, 0, Math.PI * 2);
+                this.ctx.stroke();
+            }
+            
             // Рисуем прямоугольник-башню
-            const size = this.hexGrid.hexSize * 0.6;
             this.ctx.fillStyle = tower.playerId === 1 ? '#4a90e2' : '#e24a4a';
             this.ctx.fillRect(
                 pixelPos.x - size / 2,
@@ -159,6 +176,92 @@ export class Renderer {
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             this.ctx.fillText(tower.level, pixelPos.x, pixelPos.y);
+            
+            // Визуализация выстрела (если был недавний выстрел)
+            if (tower.lastShotTarget && (currentTime - tower.lastShotTarget.time) < 300) {
+                const targetHex = this.hexGrid.arrayToHex(tower.lastShotTarget.x, tower.lastShotTarget.y);
+                const targetPixel = this.hexGrid.hexToPixel(targetHex);
+                
+                // Для большой башни - анимация зоны поражения
+                if (tower.lastShotTarget.isAreaAttack) {
+                    const timeSinceShot = currentTime - tower.lastShotTarget.time;
+                    const animationProgress = Math.min(timeSinceShot / 300, 1.0); // 0.0 - 1.0 за 300мс
+                    
+                    // Рисуем линию выстрела
+                    this.ctx.strokeStyle = '#ff6600';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(pixelPos.x, pixelPos.y);
+                    this.ctx.lineTo(targetPixel.x, targetPixel.y);
+                    this.ctx.stroke();
+                    
+                    // Анимация взрыва (расширяющийся круг)
+                    const maxRadius = this.hexGrid.hexSize * 1.5;
+                    const currentRadius = maxRadius * animationProgress;
+                    const alpha = 1.0 - animationProgress; // Затухание
+                    
+                    // Внешний круг взрыва
+                    this.ctx.strokeStyle = `rgba(255, 100, 0, ${alpha * 0.8})`;
+                    this.ctx.lineWidth = 3;
+                    this.ctx.beginPath();
+                    this.ctx.arc(targetPixel.x, targetPixel.y, currentRadius, 0, Math.PI * 2);
+                    this.ctx.stroke();
+                    
+                    // Внутренний круг взрыва
+                    this.ctx.fillStyle = `rgba(255, 200, 0, ${alpha * 0.4})`;
+                    this.ctx.beginPath();
+                    this.ctx.arc(targetPixel.x, targetPixel.y, currentRadius * 0.7, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Подсветка целевой ячейки
+                    const fillAlpha = alpha * 0.3;
+                    const strokeAlpha = alpha * 0.6;
+                    this.hexGrid.drawHex(this.ctx, targetHex, `rgba(255, 100, 0, ${fillAlpha})`, `rgba(255, 100, 0, ${strokeAlpha})`);
+                } else {
+                    // Маленькая башня - обычная линия выстрела
+                    this.ctx.strokeStyle = '#ffff00';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(pixelPos.x, pixelPos.y);
+                    this.ctx.lineTo(targetPixel.x, targetPixel.y);
+                    this.ctx.stroke();
+                }
+                
+                // Рисуем вспышку на башне
+                this.ctx.fillStyle = tower.type === 'strong' ? 'rgba(255, 100, 0, 0.5)' : 'rgba(255, 255, 0, 0.5)';
+                this.ctx.fillRect(
+                    pixelPos.x - size / 2,
+                    pixelPos.y - size / 2,
+                    size,
+                    size
+                );
+            }
+            
+            // Отображение здоровья башни
+            if (tower.health < tower.maxHealth) {
+                const hpPercent = tower.health / tower.maxHealth;
+                const barWidth = size;
+                const barHeight = 4;
+                const barY = pixelPos.y - size / 2 - 8;
+                
+                // Фон полоски здоровья
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                this.ctx.fillRect(
+                    pixelPos.x - barWidth / 2,
+                    barY,
+                    barWidth,
+                    barHeight
+                );
+                
+                // Полоска здоровья
+                this.ctx.fillStyle = hpPercent > 0.5 ? '#4a90e2' : '#e24a4a';
+                this.ctx.fillRect(
+                    pixelPos.x - barWidth / 2,
+                    barY,
+                    barWidth * hpPercent,
+                    barHeight
+                );
+            }
         });
         
         this.ctx.restore();
@@ -394,17 +497,53 @@ export class Renderer {
     drawSoldierAt(pixelPos, soldier) {
         this.ctx.save();
         
-        // Перемещаемся в позицию солдата
-        this.ctx.translate(pixelPos.x, pixelPos.y);
-        
-        // Поворачиваем в сторону движения
-        if (soldier.direction !== undefined) {
-            this.ctx.rotate(soldier.direction);
+        // Если солдат бьёт дерево, добавляем анимацию удара (движение вперёд-назад)
+        let offsetX = 0;
+        let offsetY = 0;
+        if (soldier.destroyingTree && soldier.treeHitProgress !== undefined) {
+            // Анимация удара: идём вперёд с ускорением и откатываемся назад
+            const hitPhase = soldier.treeHitProgress;
+            const attackDistance = this.hexGrid.hexSize * 0.3; // Расстояние атаки
+            
+            if (hitPhase < 0.5) {
+                // Идём вперёд с ускорением (0.0 -> 0.5)
+                const t = hitPhase * 2; // 0.0 -> 1.0
+                const easedT = t * t; // Квадратичное ускорение
+                const distance = attackDistance * easedT;
+                offsetX = Math.cos(soldier.treeDirection || 0) * distance;
+                offsetY = Math.sin(soldier.treeDirection || 0) * distance;
+            } else {
+                // Откатываемся назад (0.5 -> 1.0)
+                const t = (hitPhase - 0.5) * 2; // 0.0 -> 1.0
+                const easedT = 1 - (1 - t) * (1 - t); // Квадратичное замедление
+                const distance = attackDistance * (1 - easedT);
+                offsetX = Math.cos(soldier.treeDirection || 0) * distance;
+                offsetY = Math.sin(soldier.treeDirection || 0) * distance;
+            }
         }
         
-        // Рисуем прямоугольник-солдата (стрелка, указывающая направление)
-        const size = this.hexGrid.hexSize * 0.4;
-        this.ctx.fillStyle = soldier.playerId === 1 ? '#90e24a' : '#e2904a';
+        // Перемещаемся в позицию солдата с учётом анимации удара
+        this.ctx.translate(pixelPos.x + offsetX, pixelPos.y + offsetY);
+        
+        // Поворачиваем в сторону движения (или к цели разрушения)
+        const rotation = soldier.destroyingTree ? soldier.treeDirection : (soldier.direction || 0);
+        if (rotation !== undefined) {
+            this.ctx.rotate(rotation);
+        }
+        
+        // Размер и цвет зависят от типа солдата
+        const isStrong = soldier.type === 'strong';
+        const baseSize = this.hexGrid.hexSize * 0.4;
+        const size = isStrong ? baseSize * 1.5 : baseSize; // Сильный солдат больше
+        
+        // Цвета: базовый - зелёный/оранжевый, сильный - тёмно-синий/тёмно-красный
+        let fillColor;
+        if (isStrong) {
+            fillColor = soldier.playerId === 1 ? '#2a4a7a' : '#7a2a4a'; // Тёмные цвета для сильного
+        } else {
+            fillColor = soldier.playerId === 1 ? '#90e24a' : '#e2904a'; // Яркие цвета для базового
+        }
+        this.ctx.fillStyle = fillColor;
         
         // Рисуем треугольник (стрелка) вместо прямоугольника
         this.ctx.beginPath();
@@ -427,6 +566,33 @@ export class Renderer {
             size * hpPercent,
             3
         );
+        
+        // Визуализация атаки солдата по башне
+        if (soldier.attackTarget) {
+            const currentTime = performance.now();
+            const timeSinceAttack = currentTime - soldier.attackTarget.time;
+            if (timeSinceAttack < 200) {
+                const targetHex = this.hexGrid.arrayToHex(soldier.attackTarget.x, soldier.attackTarget.y);
+                const targetPixel = this.hexGrid.hexToPixel(targetHex);
+                
+                // Рисуем линию атаки
+                this.ctx.strokeStyle = '#00ff00';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, 0);
+                const dx = targetPixel.x - pixelPos.x;
+                const dy = targetPixel.y - pixelPos.y;
+                this.ctx.lineTo(dx, dy);
+                this.ctx.stroke();
+                
+                // Вспышка на цели
+                const alpha = 1.0 - (timeSinceAttack / 200);
+                this.ctx.fillStyle = `rgba(0, 255, 0, ${alpha * 0.5})`;
+                this.ctx.beginPath();
+                this.ctx.arc(dx, dy, this.hexGrid.hexSize * 0.3, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+        }
         
         this.ctx.restore();
     }

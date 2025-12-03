@@ -38,6 +38,11 @@ class Game {
         this.lastSoldierCreationError = null;
         this.lastSoldierCreationAttempt = null;
         
+        // Отслеживание двойного клика на дерево
+        this.lastTreeClick = null;
+        this.lastTreeClickTime = 0;
+        this.doubleClickDelay = 300; // Задержка для двойного клика в мс
+        
         console.log('Вызов setupEventListeners...');
         this.setupEventListeners();
         console.log('setupEventListeners завершён');
@@ -268,6 +273,26 @@ class Game {
                 }
                 if (!newState.testNeighborsMode && testInfoEl) {
                     testInfoEl.textContent = '';
+                }
+            });
+        }
+        
+        // Обработчик кнопки теста башен
+        const btnTestTowers = document.getElementById('btn-test-towers');
+        if (btnTestTowers) {
+            btnTestTowers.addEventListener('click', () => {
+                const playerState = this.playerBloc.getState();
+                this.playerBloc.toggleTestTowersMode();
+                const newState = this.playerBloc.getState();
+                btnTestTowers.textContent = newState.testTowersMode ? 'Выключить тест башен' : 'Включить тест башен';
+                btnTestTowers.style.background = newState.testTowersMode ? '#ff6b6b' : '#4a90e2';
+                
+                if (newState.testTowersMode) {
+                    // Инициализируем тестовый режим для всех башен
+                    this.towerBloc.initTestMode();
+                } else {
+                    // Выключаем тестовый режим
+                    this.towerBloc.stopTestMode();
                 }
             });
         }
@@ -518,6 +543,264 @@ class Game {
                 speedValue.textContent = value.toFixed(2);
                 this.soldierBloc.setSpeedMultiplier(value);
                 console.log('Скорость солдат изменена на:', value);
+            });
+        }
+        
+        // Обработчики для слайдеров прочности объектов
+        const treeDurabilitySlider = document.getElementById('tree-durability');
+        const treeDurabilityValue = document.getElementById('tree-durability-value');
+        if (treeDurabilitySlider && treeDurabilityValue) {
+            treeDurabilitySlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                treeDurabilityValue.textContent = value;
+                this.obstacleBloc.setDurabilitySetting('tree', value);
+                console.log('Прочность дерева изменена на:', value);
+            });
+        }
+        
+        const towerBasicDurabilitySlider = document.getElementById('tower-basic-durability');
+        const towerBasicDurabilityValue = document.getElementById('tower-basic-durability-value');
+        if (towerBasicDurabilitySlider && towerBasicDurabilityValue) {
+            towerBasicDurabilitySlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                towerBasicDurabilityValue.textContent = value;
+                this.obstacleBloc.setDurabilitySetting('towerBasic', value);
+                console.log('Прочность маленькой башни изменена на:', value);
+            });
+        }
+        
+        const towerStrongDurabilitySlider = document.getElementById('tower-strong-durability');
+        const towerStrongDurabilityValue = document.getElementById('tower-strong-durability-value');
+        if (towerStrongDurabilitySlider && towerStrongDurabilityValue) {
+            towerStrongDurabilitySlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                towerStrongDurabilityValue.textContent = value;
+                this.obstacleBloc.setDurabilitySetting('towerStrong', value);
+                console.log('Прочность большой башни изменена на:', value);
+            });
+        }
+        
+        const baseDurabilitySlider = document.getElementById('base-durability');
+        const baseDurabilityValue = document.getElementById('base-durability-value');
+        if (baseDurabilitySlider && baseDurabilityValue) {
+            baseDurabilitySlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                baseDurabilityValue.textContent = value;
+                this.obstacleBloc.setDurabilitySetting('base', value);
+                console.log('Прочность базы изменена на:', value);
+            });
+        }
+        
+        // Обработчики для слайдеров скорости стрельбы башен
+        const towerBasicFireRateSlider = document.getElementById('tower-basic-firerate');
+        const towerBasicFireRateValue = document.getElementById('tower-basic-firerate-value');
+        if (towerBasicFireRateSlider && towerBasicFireRateValue) {
+            towerBasicFireRateSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                towerBasicFireRateValue.textContent = value;
+                this.towerBloc.setFireRateSetting('basic', value);
+                // Обновляем fireRate для существующих башен
+                this.towerBloc.getState().towers.forEach(tower => {
+                    if (tower.type === 'basic') {
+                        tower.fireRate = value;
+                    }
+                });
+                console.log('Скорость стрельбы маленькой башни изменена на:', value, 'мс');
+            });
+        }
+        
+        const towerStrongFireRateSlider = document.getElementById('tower-strong-firerate');
+        const towerStrongFireRateValue = document.getElementById('tower-strong-firerate-value');
+        if (towerStrongFireRateSlider && towerStrongFireRateValue) {
+            towerStrongFireRateSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                towerStrongFireRateValue.textContent = value;
+                this.towerBloc.setFireRateSetting('strong', value);
+                // Обновляем fireRate для существующих башен
+                this.towerBloc.getState().towers.forEach(tower => {
+                    if (tower.type === 'strong') {
+                        tower.fireRate = value;
+                    }
+                });
+                console.log('Скорость стрельбы большой башни изменена на:', value, 'мс');
+            });
+        }
+        
+        // Обработчики для слайдеров дальности стрельбы башен
+        const towerBasicRangeSlider = document.getElementById('tower-basic-range');
+        const towerBasicRangeValue = document.getElementById('tower-basic-range-value');
+        if (towerBasicRangeSlider && towerBasicRangeValue) {
+            towerBasicRangeSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                towerBasicRangeValue.textContent = value;
+                this.towerBloc.setRangeSetting('basic', value);
+                // Обновляем range для существующих башен
+                this.towerBloc.getState().towers.forEach(tower => {
+                    if (tower.type === 'basic') {
+                        tower.range = value;
+                    }
+                });
+                console.log('Дальность стрельбы маленькой башни изменена на:', value, 'клеток');
+            });
+        }
+        
+        const towerStrongRangeSlider = document.getElementById('tower-strong-range');
+        const towerStrongRangeValue = document.getElementById('tower-strong-range-value');
+        if (towerStrongRangeSlider && towerStrongRangeValue) {
+            towerStrongRangeSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                towerStrongRangeValue.textContent = value;
+                this.towerBloc.setRangeSetting('strong', value);
+                // Обновляем range для существующих башен
+                this.towerBloc.getState().towers.forEach(tower => {
+                    if (tower.type === 'strong') {
+                        tower.range = value;
+                    }
+                });
+                console.log('Дальность стрельбы большой башни изменена на:', value, 'клеток');
+            });
+        }
+        
+        // Обработчики для слайдеров урона башен
+        const towerBasicDamageSlider = document.getElementById('tower-basic-damage');
+        const towerBasicDamageValue = document.getElementById('tower-basic-damage-value');
+        if (towerBasicDamageSlider && towerBasicDamageValue) {
+            towerBasicDamageSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                towerBasicDamageValue.textContent = value;
+                this.towerBloc.setDamageSetting('basic', value);
+                // Обновляем damage для существующих башен
+                this.towerBloc.getState().towers.forEach(tower => {
+                    if (tower.type === 'basic') {
+                        tower.damage = value;
+                    }
+                });
+                console.log('Урон маленькой башни изменён на:', value);
+            });
+        }
+        
+        const towerStrongDamageSlider = document.getElementById('tower-strong-damage');
+        const towerStrongDamageValue = document.getElementById('tower-strong-damage-value');
+        if (towerStrongDamageSlider && towerStrongDamageValue) {
+            towerStrongDamageSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                towerStrongDamageValue.textContent = value;
+                this.towerBloc.setDamageSetting('strong', value);
+                // Обновляем damage для существующих башен
+                this.towerBloc.getState().towers.forEach(tower => {
+                    if (tower.type === 'strong') {
+                        tower.damage = value;
+                    }
+                });
+                console.log('Урон большой башни изменён на:', value);
+            });
+        }
+        
+        // Обработчики для слайдеров атаки солдат
+        const soldierBasicFireRateSlider = document.getElementById('soldier-basic-firerate');
+        const soldierBasicFireRateValue = document.getElementById('soldier-basic-firerate-value');
+        if (soldierBasicFireRateSlider && soldierBasicFireRateValue) {
+            soldierBasicFireRateSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                soldierBasicFireRateValue.textContent = value;
+                this.soldierBloc.setAttackSetting('basic', 'fireRate', value);
+                // Обновляем для существующих солдат
+                this.soldierBloc.getState().soldiers.forEach(soldier => {
+                    if (soldier.type === 'basic') {
+                        soldier.attackFireRate = value;
+                    }
+                });
+                console.log('Скорость стрельбы слабого солдата изменена на:', value, 'мс');
+            });
+        }
+        
+        const soldierBasicDamageSlider = document.getElementById('soldier-basic-damage');
+        const soldierBasicDamageValue = document.getElementById('soldier-basic-damage-value');
+        if (soldierBasicDamageSlider && soldierBasicDamageValue) {
+            soldierBasicDamageSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                soldierBasicDamageValue.textContent = value;
+                this.soldierBloc.setAttackSetting('basic', 'damage', value);
+                // Обновляем для существующих солдат
+                this.soldierBloc.getState().soldiers.forEach(soldier => {
+                    if (soldier.type === 'basic') {
+                        soldier.attackDamage = value;
+                    }
+                });
+                console.log('Урон слабого солдата изменён на:', value);
+            });
+        }
+        
+        const soldierStrongFireRateSlider = document.getElementById('soldier-strong-firerate');
+        const soldierStrongFireRateValue = document.getElementById('soldier-strong-firerate-value');
+        if (soldierStrongFireRateSlider && soldierStrongFireRateValue) {
+            soldierStrongFireRateSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                soldierStrongFireRateValue.textContent = value;
+                this.soldierBloc.setAttackSetting('strong', 'fireRate', value);
+                // Обновляем для существующих солдат
+                this.soldierBloc.getState().soldiers.forEach(soldier => {
+                    if (soldier.type === 'strong') {
+                        soldier.attackFireRate = value;
+                    }
+                });
+                console.log('Скорость стрельбы сильного солдата изменена на:', value, 'мс');
+            });
+        }
+        
+        const soldierStrongDamageSlider = document.getElementById('soldier-strong-damage');
+        const soldierStrongDamageValue = document.getElementById('soldier-strong-damage-value');
+        if (soldierStrongDamageSlider && soldierStrongDamageValue) {
+            soldierStrongDamageSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                soldierStrongDamageValue.textContent = value;
+                this.soldierBloc.setAttackSetting('strong', 'damage', value);
+                // Обновляем для существующих солдат
+                this.soldierBloc.getState().soldiers.forEach(soldier => {
+                    if (soldier.type === 'strong') {
+                        soldier.attackDamage = value;
+                    }
+                });
+                console.log('Урон сильного солдата изменён на:', value);
+            });
+        }
+        
+        // Обработчики для слайдеров здоровья солдат
+        const soldierBasicHealthSlider = document.getElementById('soldier-basic-health');
+        const soldierBasicHealthValue = document.getElementById('soldier-basic-health-value');
+        if (soldierBasicHealthSlider && soldierBasicHealthValue) {
+            soldierBasicHealthSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                soldierBasicHealthValue.textContent = value;
+                this.soldierBloc.setHealthSetting('basic', value);
+                // Обновляем здоровье для существующих солдат (пропорционально)
+                this.soldierBloc.getState().soldiers.forEach(soldier => {
+                    if (soldier.type === 'basic') {
+                        const healthPercent = soldier.health / soldier.maxHealth;
+                        soldier.maxHealth = value;
+                        soldier.health = Math.max(1, Math.floor(value * healthPercent));
+                    }
+                });
+                console.log('Здоровье слабого солдата изменено на:', value);
+            });
+        }
+        
+        const soldierStrongHealthSlider = document.getElementById('soldier-strong-health');
+        const soldierStrongHealthValue = document.getElementById('soldier-strong-health-value');
+        if (soldierStrongHealthSlider && soldierStrongHealthValue) {
+            soldierStrongHealthSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                soldierStrongHealthValue.textContent = value;
+                this.soldierBloc.setHealthSetting('strong', value);
+                // Обновляем здоровье для существующих солдат (пропорционально)
+                this.soldierBloc.getState().soldiers.forEach(soldier => {
+                    if (soldier.type === 'strong') {
+                        const healthPercent = soldier.health / soldier.maxHealth;
+                        soldier.maxHealth = value;
+                        soldier.health = Math.max(1, Math.floor(value * healthPercent));
+                    }
+                });
+                console.log('Здоровье сильного солдата изменено на:', value);
             });
         }
         
@@ -809,6 +1092,68 @@ class Game {
             return;
         }
 
+        // Проверка двойного клика на дерево для активации разрушения (ПЕРЕД проверкой размещения препятствия)
+        const obstacle = this.obstacleBloc.getObstacleAt(arrHex.x, arrHex.y);
+        if (obstacle && obstacle.type === 'tree' && !playerState.selectedObstacleType) {
+            const currentTime = performance.now();
+            const isDoubleClick = this.lastTreeClick && 
+                                 this.lastTreeClick.x === arrHex.x && 
+                                 this.lastTreeClick.y === arrHex.y &&
+                                 (currentTime - this.lastTreeClickTime) < this.doubleClickDelay;
+            
+            if (isDoubleClick) {
+                // Двойной клик на дерево - активируем разрушение
+                console.log(`Двойной клик на дерево (${arrHex.x}, ${arrHex.y})`);
+                
+                // Находим ближайшего сильного солдата, который может разрушить дерево
+                const soldiers = this.soldierBloc.getState().soldiers;
+                const strongSoldiers = soldiers.filter(s => s.canDestroyTrees && !s.destroyingTree);
+                
+                if (strongSoldiers.length === 0) {
+                    console.log('Нет сильных солдат для разрушения дерева');
+                    this.lastTreeClick = null;
+                    this.lastTreeClickTime = 0;
+                    return;
+                }
+                
+                // Находим ближайшего солдата к дереву
+                let closestSoldier = null;
+                let minDistance = Infinity;
+                strongSoldiers.forEach(soldier => {
+                    const dx = soldier.x - arrHex.x;
+                    const dy = soldier.y - arrHex.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestSoldier = soldier;
+                    }
+                });
+                
+                if (closestSoldier) {
+                    // Проверяем, что дерево на вражеской территории
+                    if (this.soldierBloc.isOnEnemyTerritory(arrHex.x, arrHex.y, closestSoldier.playerId)) {
+                        this.soldierBloc.startDestroyingTree(closestSoldier.id, arrHex.x, arrHex.y, obstacle.id, this.obstacleBloc);
+                        console.log(`Солдат ${closestSoldier.id} начал разрушение дерева`);
+                    } else {
+                        console.log('Дерево не на вражеской территории');
+                    }
+                }
+                
+                this.lastTreeClick = null;
+                this.lastTreeClickTime = 0;
+                return;
+            } else {
+                // Первый клик - сохраняем для проверки двойного клика
+                this.lastTreeClick = { x: arrHex.x, y: arrHex.y };
+                this.lastTreeClickTime = currentTime;
+                return;
+            }
+        } else {
+            // Клик не на дерево - сбрасываем отслеживание двойного клика
+            this.lastTreeClick = null;
+            this.lastTreeClickTime = 0;
+        }
+
         // Размещение препятствия
         if (playerState.selectedObstacleType) {
             // Нельзя ставить препятствия на базах
@@ -924,6 +1269,10 @@ class Game {
         // При первом кадре lastTime может быть 0, поэтому ограничиваем deltaTime
         const deltaTime = this.lastTime > 0 ? currentTime - this.lastTime : 16; // 16мс = ~60 FPS
         const gameState = this.gameBloc.getState();
+        
+        // Обновление башен (стрельба) - всегда, даже в тестовом режиме
+        const soldiers = this.soldierBloc.getState().soldiers;
+        this.towerBloc.updateTowers(currentTime, soldiers, this.hexGrid);
         
         if (gameState.gameState === 'playing') {
             // Обновление солдат
