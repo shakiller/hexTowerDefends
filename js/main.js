@@ -27,7 +27,7 @@ class Game {
         
         this.canvas = document.getElementById('game-canvas');
         this.renderer = new Renderer(this.canvas, this.hexGrid);
-        this.botAI = new BotAI(this.gameBloc, this.towerBloc, this.soldierBloc, this.hexGrid, this.obstacleBloc);
+        this.botAI = new BotAI(this.gameBloc, this.towerBloc, this.soldierBloc, this.hexGrid, this.obstacleBloc, this.workerBloc, this.goldBloc);
         
         this.lastTime = 0;
         this.isRunning = false;
@@ -1558,6 +1558,9 @@ class Game {
         // Обновление панели очереди строительства
         this.updateBuildQueueDisplay();
         
+        // Обновление панели состояния бота
+        this.updateBotStatusDisplay();
+        
         // Обновление информации о тестировании соседей
         if (playerState.testNeighborsMode && playerState.testSelectedHex) {
             this.updateTestNeighborsInfo(playerState.testSelectedHex);
@@ -1897,6 +1900,17 @@ class Game {
                 }
             });
         }
+        
+        // Обработчик для панели состояния бота
+        const closeBotStatusBtn = document.getElementById('close-bot-status');
+        if (closeBotStatusBtn) {
+            closeBotStatusBtn.addEventListener('click', () => {
+                const botStatusPanel = document.getElementById('bot-status-panel');
+                if (botStatusPanel) {
+                    botStatusPanel.style.display = 'none';
+                }
+            });
+        }
     }
     
     showDebugMessage(message) {
@@ -2035,6 +2049,56 @@ class Game {
         const workerState = this.workerBloc.getState();
         const currentTime = performance.now();
         this.renderer.render(gameState, towerState, soldierState, playerState, this.mousePosition, obstacleState, goldState, workerState, currentTime);
+    }
+    
+    updateBotStatusDisplay() {
+        const botStatusPanel = document.getElementById('bot-status-panel');
+        if (!botStatusPanel) return;
+        
+        const gameState = this.gameBloc.getState();
+        
+        // Показываем панель только в режимах PvE и Campaign
+        if (gameState.gameMode === 'pve' || gameState.gameMode === 'campaign') {
+            botStatusPanel.style.display = 'block';
+        } else {
+            botStatusPanel.style.display = 'none';
+            return;
+        }
+        
+        const botState = this.botAI.getState();
+        const player = gameState.players[2];
+        const towerState = this.towerBloc.getState();
+        const soldierState = this.soldierBloc.getState();
+        const workerState = this.workerBloc.getState();
+        const goldState = this.goldBloc.getState();
+        
+        const botWorkers = workerState.workers.filter(w => w.playerId === 2);
+        const gatherers = botWorkers.filter(w => w.type === 'gatherer');
+        const builders = botWorkers.filter(w => w.type === 'builder');
+        const botTowers = towerState.towers.filter(t => t.playerId === 2);
+        const botSoldiers = soldierState.soldiers.filter(s => s.playerId === 2);
+        const availableGold = goldState.goldPiles.filter(p => !p.collected).length;
+        
+        // Обновляем содержимое
+        const currentActionEl = document.getElementById('bot-current-action');
+        const priorityEl = document.getElementById('bot-priority');
+        const goldEl = document.getElementById('bot-gold');
+        const gatherersEl = document.getElementById('bot-gatherers');
+        const buildersEl = document.getElementById('bot-builders');
+        const towersEl = document.getElementById('bot-towers');
+        const soldiersEl = document.getElementById('bot-soldiers');
+        const availableGoldEl = document.getElementById('bot-available-gold');
+        const lastActionEl = document.getElementById('bot-last-action');
+        
+        if (currentActionEl) currentActionEl.textContent = botState.currentAction || 'Ожидание...';
+        if (priorityEl) priorityEl.textContent = botState.priority || '-';
+        if (goldEl) goldEl.textContent = `${player.gold} (резерв: ${this.botAI.minGoldReserve})`;
+        if (gatherersEl) gatherersEl.textContent = `${gatherers.length}/${this.botAI.targetGatherers}`;
+        if (buildersEl) buildersEl.textContent = `${builders.length}/${this.botAI.targetBuilders}`;
+        if (towersEl) towersEl.textContent = `${botTowers.length} (макс: 8)`;
+        if (soldiersEl) soldiersEl.textContent = `${botSoldiers.length} (макс: 5)`;
+        if (availableGoldEl) availableGoldEl.textContent = availableGold;
+        if (lastActionEl) lastActionEl.textContent = botState.lastAction || '-';
     }
     
     updateBuildQueueDisplay() {

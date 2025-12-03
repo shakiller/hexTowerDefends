@@ -129,7 +129,10 @@ export class SoldierBloc {
             treeHitsCount: 0,
             originalPath: null,
             originalTargetX: targetX,
-            originalTargetY: targetY
+            originalTargetY: targetY,
+            attackingBase: false,
+            lastBaseAttackTime: 0,
+            baseAttackTarget: null
         };
 
         this.state.soldiers.push(soldier);
@@ -206,13 +209,7 @@ export class SoldierBloc {
     }
 
     updateSoldiers(deltaTime, towerBloc, obstacleBloc = null) {
-        console.log(`=== updateSoldiers ВЫЗВАН ===`, {
-            soldiersCount: this.state.soldiers.length,
-            deltaTime,
-            hasTowerBloc: !!towerBloc,
-            hasObstacleBloc: !!obstacleBloc
-        });
-        
+        // Убрали избыточное логирование для производительности
         const soldiersToRemove = [];
         const currentTime = performance.now();
         
@@ -221,13 +218,6 @@ export class SoldierBloc {
         
         // Интервал пересчёта пути (в миллисекундах) - пересчитываем каждые 500мс
         const PATH_RECALCULATION_INTERVAL = 500;
-        
-        // Отладка: логируем количество солдат перед обновлением
-        if (this.state.soldiers.length > 0) {
-            console.log(`=== updateSoldiers: обрабатываем ${this.state.soldiers.length} солдат ===`);
-        } else {
-            console.log(`=== updateSoldiers: солдат нет ===`);
-        }
         
         this.state.soldiers.forEach(soldier => {
             // Обработка режима разрушения дерева
@@ -343,19 +333,9 @@ export class SoldierBloc {
             
             // Если путь ещё не вычислен, вычисляем его
             if (!soldier.path || soldier.path.length === 0) {
-                console.log(`Вычисляем путь для солдата ${soldier.id}`, {
-                    startPos: { x: soldier.startX, y: soldier.startY },
-                    targetPos: { x: soldier.targetX, y: soldier.targetY },
-                    hasObstacleBloc: !!obstacleBloc,
-                    hasTowerBloc: !!towerBloc
-                });
                 const startHex = this.hexGrid.arrayToHex(soldier.startX, soldier.startY);
                 const targetHex = this.hexGrid.arrayToHex(soldier.targetX, soldier.targetY);
                 soldier.path = this.hexGrid.findPath(startHex, targetHex, obstacleBloc, towerBloc);
-                console.log(`Путь для солдата ${soldier.id}:`, {
-                    pathLength: soldier.path ? soldier.path.length : 0,
-                    path: soldier.path ? soldier.path.map(h => `${h.q},${h.r}`).join(' -> ') : 'нет'
-                });
                 soldier.currentHexIndex = 0;
                 soldier.x = soldier.startX;
                 soldier.y = soldier.startY;
@@ -364,36 +344,113 @@ export class SoldierBloc {
                 soldier.lastPathRecalculation = performance.now();
             }
             
-            // Если путь пустой после попытки вычисления, возвращаем деньги и удаляем солдата
+            // Если путь пустой после попытки вычисления, проверяем, не рядом ли с базой
             if (!soldier.path || soldier.path.length === 0) {
-                console.log(`❌ Солдат ${soldier.id} не может найти путь. Возвращаем деньги и удаляем.`, {
-                    soldierId: soldier.id,
-                    startPos: { x: soldier.startX, y: soldier.startY },
-                    targetPos: { x: soldier.targetX, y: soldier.targetY },
-                    hasObstacleBloc: !!obstacleBloc,
-                    hasTowerBloc: !!towerBloc,
-                    path: soldier.path
-                });
-                // Возвращаем деньги за солдата
-                const soldierConfig = this.getSoldierConfig(soldier.type);
-                this.gameBloc.updatePlayerGold(soldier.playerId, soldierConfig.cost);
-                soldiersToRemove.push(soldier.id);
-                return;
-            }
-            
-            // Получаем текущую и следующую ячейки в пути
-            const currentHexIndex = Math.floor(soldier.currentHexIndex);
-            if (currentHexIndex >= soldier.path.length - 1) {
-                // Достигли цели
+                // Проверяем текущую позицию - может быть, мы уже рядом с базой
+                const currentHex = this.hexGrid.arrayToHex(soldier.x, soldier.y);
+                const currentArr = this.hexGrid.hexToArray(currentHex);
+                const centerX = Math.floor(this.hexGrid.width / 2);
                 const enemyPlayerId = soldier.playerId === 1 ? 2 : 1;
-                this.gameBloc.updatePlayerHealth(enemyPlayerId, soldier.damage);
+                
+                // Определяем координаты базы врага
+                let isNearEnemyBase = false;
+                if (enemyPlayerId === 2) {
+                    // Вражеская база игрока 2 (вверху) - вся верхняя строка (y === 0)
+                    isNearEnemyBase = currentArr.y === 0 || currentArr.y === 1;
+                } else {
+                    // Вражеская база игрока 1 (внизу) - две строки
+                    const isOnPlayer1BaseRow1 = currentArr.y === this.hexGrid.height - 2 && currentArr.x % 2 === 0;
+                    const isOnPlayer1BaseRow2 = currentArr.y === this.hexGrid.height - 1 && currentArr.x % 2 === 1;
+                    const isNearPlayer1Base = currentArr.y >= this.hexGrid.height - 3;
+                    isNearEnemyBase = isOnPlayer1BaseRow1 || isOnPlayer1BaseRow2 || isNearPlayer1Base;
+                }
+                
+                if (!isNearEnemyBase) {
+                    // Возвращаем деньги за солдата
+                    const soldierConfig = this.getSoldierConfig(soldier.type);
+                    this.gameBloc.updatePlayerGold(soldier.playerId, soldierConfig.cost);
+                    soldiersToRemove.push(soldier.id);
+                    return;
+                }
+                // Если рядом с базой - продолжаем обработку для атаки
+            }
+            
+            // Получаем текущую позицию солдата
+            let currentHex, currentArr;
+            const currentHexIndex = Math.floor(soldier.currentHexIndex);
+            
+            if (soldier.path && soldier.path.length > 0 && currentHexIndex < soldier.path.length) {
+                currentHex = soldier.path[currentHexIndex];
+                currentArr = this.hexGrid.hexToArray(currentHex);
+            } else {
+                // Если пути нет, используем текущую позицию солдата
+                currentHex = this.hexGrid.arrayToHex(soldier.x, soldier.y);
+                currentArr = this.hexGrid.hexToArray(currentHex);
+            }
+            
+            // Проверяем, находится ли солдат на базе врага или рядом с ней
+            const centerX = Math.floor(this.hexGrid.width / 2);
+            const enemyPlayerId = soldier.playerId === 1 ? 2 : 1;
+            
+            // Определяем координаты базы врага
+            let isOnEnemyBase = false;
+            let isNearEnemyBase = false;
+            
+            if (enemyPlayerId === 2) {
+                // Вражеская база игрока 2 (вверху) - вся верхняя строка (y === 0)
+                isOnEnemyBase = currentArr.y === 0;
+                isNearEnemyBase = currentArr.y <= 1; // В пределах 1 клетки от базы
+            } else {
+                // Вражеская база игрока 1 (внизу) - две строки
+                const isOnPlayer1BaseRow1 = currentArr.y === this.hexGrid.height - 2 && currentArr.x % 2 === 0;
+                const isOnPlayer1BaseRow2 = currentArr.y === this.hexGrid.height - 1 && currentArr.x % 2 === 1;
+                isOnEnemyBase = isOnPlayer1BaseRow1 || isOnPlayer1BaseRow2;
+                isNearEnemyBase = currentArr.y >= this.hexGrid.height - 3; // В пределах 2 клеток от базы
+            }
+            
+            // Если солдат на базе врага или рядом - атакуем её
+            if (isOnEnemyBase || isNearEnemyBase) {
+                const currentTime = performance.now();
+                const timeSinceLastAttack = currentTime - (soldier.lastBaseAttackTime || 0);
+                
+                // Обновляем настройки атаки
+                if (soldier.type === 'basic') {
+                    soldier.attackFireRate = this.attackSettings.basic.fireRate;
+                    soldier.attackDamage = this.attackSettings.basic.damage;
+                } else if (soldier.type === 'strong') {
+                    soldier.attackFireRate = this.attackSettings.strong.fireRate;
+                    soldier.attackDamage = this.attackSettings.strong.damage;
+                }
+                
+                // Атакуем базу с интервалом
+                if (timeSinceLastAttack >= soldier.attackFireRate) {
+                    soldier.lastBaseAttackTime = currentTime;
+                    this.gameBloc.updatePlayerHealth(enemyPlayerId, soldier.attackDamage);
+                    soldier.attackingBase = true;
+                    const targetY = enemyPlayerId === 2 ? 0 : this.hexGrid.height - 1;
+                    soldier.baseAttackTarget = {
+                        x: centerX,
+                        y: targetY,
+                        time: currentTime
+                    };
+                }
+                // Останавливаем движение, но не удаляем солдата
+                return;
+            }
+            
+            // Если достигли конца пути и не рядом с базой - удаляем солдата
+            if (soldier.path && currentHexIndex >= soldier.path.length - 1) {
                 soldiersToRemove.push(soldier.id);
                 return;
             }
             
-            const currentHex = soldier.path[currentHexIndex];
+            // Если пути нет и не рядом с базой - удаляем солдата
+            if (!soldier.path || soldier.path.length === 0) {
+                soldiersToRemove.push(soldier.id);
+                return;
+            }
+            
             const nextHex = soldier.path[currentHexIndex + 1];
-            const currentArr = this.hexGrid.hexToArray(currentHex);
             const nextArr = this.hexGrid.hexToArray(nextHex);
             
             // Периодически пересчитываем путь, чтобы учитывать изменения препятствий
@@ -405,11 +462,7 @@ export class SoldierBloc {
             // Если заблокирован или прошло достаточно времени - пересчитываем путь от текущей позиции
             const nextStepBlocked = this.hexGrid.isBlocked(nextHex, obstacleBloc, towerBloc);
             if (nextStepBlocked || needsPeriodicRecalculation) {
-                if (nextStepBlocked) {
-                    console.log(`⚠️ Следующий шаг пути для солдата ${soldier.id} заблокирован, пересчитываем путь`);
-                } else {
-                    console.log(`🔄 Периодический пересчёт пути для солдата ${soldier.id}`);
-                }
+                // Пересчитываем путь (логирование убрано для производительности)
                 
                 // Используем текущую ячейку из пути как стартовую позицию для нового пути
                 // Это гарантирует, что мы не вернёмся назад
@@ -456,7 +509,6 @@ export class SoldierBloc {
                 }
                 
                 soldier.moveProgress = 0;
-                console.log(`✅ Новый путь для солдата ${soldier.id} найден, длина: ${soldier.path.length}, начинаем с индекса ${soldier.currentHexIndex}`);
             }
             
             // Проверяем, что путь всё ещё валиден после пересчёта
@@ -566,21 +618,9 @@ export class SoldierBloc {
         
         // Удаляем солдат, которые достигли цели или погибли
         if (soldiersToRemove.length > 0) {
-            console.log(`=== УДАЛЕНИЕ СОЛДАТ ===`);
-            console.log(`Количество солдат до удаления: ${this.state.soldiers.length}`);
-            console.log(`Удаляем ${soldiersToRemove.length} солдат:`, soldiersToRemove);
             soldiersToRemove.forEach(id => {
-                const soldier = this.state.soldiers.find(s => s.id === id);
-                console.log(`Удаляем солдата ID=${id}:`, soldier ? {
-                    id: soldier.id,
-                    playerId: soldier.playerId,
-                    type: soldier.type,
-                    hasPath: !!soldier.path,
-                    pathLength: soldier.path ? soldier.path.length : 0
-                } : 'не найден');
                 this.removeSoldier(id);
             });
-            console.log(`Количество солдат после удаления: ${this.state.soldiers.length}`);
             this.emit();
         }
     }

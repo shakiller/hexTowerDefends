@@ -114,6 +114,27 @@
                 </div>
                 <div id="build-queue-content" style="max-height: 400px; overflow-y: auto;"></div>
             </div>
+            
+            <div id="bot-status-panel" style="display: none; position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: #fff; padding: 15px; border-radius: 8px; border: 2px solid #ffaa00; min-width: 300px; max-width: 400px; z-index: 9999; font-family: monospace; font-size: 0.9em;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #ffaa00; padding-bottom: 5px;">
+                    <strong style="color: #ffaa00; font-size: 1.1em;">🤖 Состояние бота</strong>
+                    <button id="close-bot-status" style="background: #e24a4a; color: white; border: none; border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 0.9em;">✕</button>
+                </div>
+                <div id="bot-status-content" style="max-height: 400px; overflow-y: auto; line-height: 1.6;">
+                    <div style="margin-bottom: 8px;"><strong>Текущее действие:</strong> <span id="bot-current-action">Ожидание...</span></div>
+                    <div style="margin-bottom: 8px;"><strong>Приоритет:</strong> <span id="bot-priority">-</span></div>
+                    <div style="margin-bottom: 8px;"><strong>Золото:</strong> <span id="bot-gold">-</span></div>
+                    <div style="margin-bottom: 8px;"><strong>Сборщики:</strong> <span id="bot-gatherers">-</span></div>
+                    <div style="margin-bottom: 8px;"><strong>Строители:</strong> <span id="bot-builders">-</span></div>
+                    <div style="margin-bottom: 8px;"><strong>Башни:</strong> <span id="bot-towers">-</span></div>
+                    <div style="margin-bottom: 8px;"><strong>Солдаты:</strong> <span id="bot-soldiers">-</span></div>
+                    <div style="margin-bottom: 8px;"><strong>Золото на карте:</strong> <span id="bot-available-gold">-</span></div>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #555;">
+                        <div style="font-size: 0.85em; color: #aaa;">Последнее действие:</div>
+                        <div id="bot-last-action" style="font-size: 0.85em; color: #ccc; margin-top: 5px;">-</div>
+                    </div>
+                </div>
+            </div>
 
             <div style="display: flex; gap: 10px; flex: 1; width: 100%;">
                 <div id="game-board-container" style="flex: 0 0 80%; width: 80%;">

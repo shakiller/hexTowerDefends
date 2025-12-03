@@ -962,6 +962,32 @@ export class Renderer {
                 this.ctx.fill();
             }
         }
+        // Визуализация атаки базы
+        if (soldier.baseAttackTarget) {
+            const currentTime = performance.now();
+            const timeSinceAttack = currentTime - soldier.baseAttackTarget.time;
+            if (timeSinceAttack < 500) {
+                const targetHex = this.hexGrid.arrayToHex(soldier.baseAttackTarget.x, soldier.baseAttackTarget.y);
+                const targetPixel = this.hexGrid.hexToPixel(targetHex);
+                
+                // Рисуем линию атаки базы (красная)
+                this.ctx.strokeStyle = '#ff0000';
+                this.ctx.lineWidth = 3;
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, 0);
+                const dx = targetPixel.x - pixelPos.x;
+                const dy = targetPixel.y - pixelPos.y;
+                this.ctx.lineTo(dx, dy);
+                this.ctx.stroke();
+                
+                // Вспышка на базе (более яркая)
+                const alpha = 1.0 - (timeSinceAttack / 500);
+                this.ctx.fillStyle = `rgba(255, 0, 0, ${alpha * 0.7})`;
+                this.ctx.beginPath();
+                this.ctx.arc(dx, dy, this.hexGrid.hexSize * 0.5, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+        }
         this.ctx.restore();
         
         // Рисуем индикатор здоровья после всех трансформаций
