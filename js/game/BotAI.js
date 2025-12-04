@@ -348,120 +348,113 @@ export class BotAI {
     }
     
     /**
+     * Вычисляет путь от вражеской базы к нашей базе
+     * Возвращает длину пути и сам путь
+     */
+    calculateEnemyPath(obstacleBloc = null, towerBloc = null) {
+        const centerX = Math.floor(this.hexGrid.width / 2);
+        // Вражеская база (игрок 1) - нижняя часть карты
+        const enemyBaseY = this.hexGrid.height - 1;
+        const enemyGateHex = this.hexGrid.arrayToHex(centerX, enemyBaseY);
+        
+        // Наша база (игрок 2) - верхняя часть карты
+        const ourBaseY = 0;
+        const ourGateHex = this.hexGrid.arrayToHex(centerX, ourBaseY);
+        
+        // Вычисляем путь от вражеской базы к нашей (для солдат, allowGates = false)
+        const path = this.hexGrid.findPath(enemyGateHex, ourGateHex, obstacleBloc || this.obstacleBloc, towerBloc || this.towerBloc, false, false);
+        
+        return {
+            path: path,
+            length: path ? path.length : 0
+        };
+    }
+    
+    /**
      * Находит лучшую позицию для строительства препятствия
-     * Стратегия: создавать воронки к башням, заставляя врага идти через зону обстрела
+     * Стратегия: максимально удлинить путь вражеских солдат
      */
     findBestObstaclePosition() {
         const centerX = Math.floor(this.hexGrid.width / 2);
         const baseY = 0; // Игрок 2: верхняя строка
-        const botTowers = this.towerBloc.getState().towers.filter(t => t.playerId === 2);
         
-        // Если есть башни - создаём воронки к ним
-            if (botTowers.length > 0) {
-            const funnelPositions = [];
-            
-            // Для каждой башни ищем позиции для создания воронки
-            botTowers.forEach(tower => {
-                const towerHex = this.hexGrid.arrayToHex(tower.x, tower.y);
-                const towerArr = this.hexGrid.hexToArray(towerHex);
-                
-                // Ищем позиции вокруг башни, которые направят врага к ней
-                // Создаём препятствия по бокам от пути к башне
-                const funnelRadius = 2;
-                for (let dx = -funnelRadius; dx <= funnelRadius; dx++) {
-                    for (let dy = -funnelRadius; dy <= funnelRadius; dy++) {
-                        const x = towerArr.x + dx;
-                        const y = towerArr.y + dy;
-                        
-                        if (x < 0 || x >= this.hexGrid.width || y < 0 || y >= this.hexGrid.height) {
-                            continue;
-                        }
-                        
-                        if (y === 0) continue; // Не на базе
-                        
-                        // Пропускаем саму башню
-                        if (x === towerArr.x && y === towerArr.y) continue;
-                        
-                        const hex = this.hexGrid.arrayToHex(x, y);
-                        if (this.hexGrid.isBlocked(hex, this.obstacleBloc, this.towerBloc, false)) {
-                            continue;
-                        }
-                        
-                        const existingTower = this.towerBloc.getTowerAt(hex);
-                        if (existingTower) continue;
-                        
-                        const obstacle = this.obstacleBloc.getObstacleAt(x, y);
-                        if (obstacle) continue;
-                        
-                        // Приоритет позициям, которые создают воронку (по бокам от центрального пути)
-                        // Центральный путь - это прямая линия от вражеской базы к нашей
-                        const distanceToTower = Math.abs(dx) + Math.abs(dy);
-                        const isOnSide = Math.abs(dx) > 0; // По бокам от башни
-                        const priority = distanceToTower + (isOnSide ? 0 : 5); // Боковые позиции приоритетнее
-                        
-                        funnelPositions.push({x, y, priority, towerDistance: distanceToTower});
-                    }
-                }
-            });
-            
-            if (funnelPositions.length > 0) {
-                // Сортируем по приоритету
-                funnelPositions.sort((a, b) => a.priority - b.priority);
-                const bestPos = funnelPositions[0];
-                // Используем деревья для воронок (можно разрушить, но направляют врага)
-                return {x: bestPos.x, y: bestPos.y, type: 'tree'};
-            }
+        // Вычисляем текущий путь вражеских солдат
+        const currentPath = this.calculateEnemyPath();
+        const basePathLength = currentPath.length;
+        
+        if (basePathLength === 0) {
+            // Путь не найден - используем простую стратегию
+            return this.findSafeObstaclePosition();
         }
         
-        // Если башен нет или не нашли позиции для воронок - строим защитную линию
-        const defensePositions = [];
-        const defenseRadius = 3;
+        // Ищем позиции, которые максимально удлинят путь
+        const candidatePositions = [];
+        const searchRadius = 8; // Ищем в радиусе 8 клеток от центра
+        const halfHeight = Math.floor(this.hexGrid.height / 2);
         
-        // Создаём препятствия по бокам от центрального пути, оставляя проход в центре
-        for (let dx = -defenseRadius; dx <= defenseRadius; dx++) {
-            for (let dy = 1; dy <= defenseRadius + 2; dy++) {
-                const x = centerX + dx;
-                const y = baseY + dy;
-                
-                if (x < 0 || x >= this.hexGrid.width || y < 0 || y >= this.hexGrid.height) {
-                    continue;
-                }
-                
-                if (y === 0) continue;
-                
-                // Пропускаем центральные позиции (оставляем проход шириной минимум 3 клетки)
-                // Центральный проход: от -1 до +1 по x, первые 3 ряда по y
-                if (Math.abs(dx) <= 1 && dy <= 3) {
-                    continue; // Центральный проход - не строим здесь
-                }
-                
+        // Проверяем позиции в верхней половине карты (ближе к нашей базе)
+        for (let y = 1; y < halfHeight; y++) {
+            for (let x = 0; x < this.hexGrid.width; x++) {
                 const hex = this.hexGrid.arrayToHex(x, y);
+                
+                // Пропускаем заблокированные ячейки
                 if (this.hexGrid.isBlocked(hex, this.obstacleBloc, this.towerBloc, false)) {
                     continue;
                 }
                 
+                // Пропускаем башни и препятствия
                 const tower = this.towerBloc.getTowerAt(hex);
                 if (tower) continue;
                 
                 const obstacle = this.obstacleBloc.getObstacleAt(x, y);
                 if (obstacle) continue;
                 
-                // Приоритет позициям по бокам от центра
-                const distanceFromCenter = Math.abs(dx);
-                const priority = dy * 2 + (distanceFromCenter > 2 ? 0 : 5); // Боковые позиции приоритетнее
+                // Проверяем, не блокирует ли препятствие путь
+                if (this.wouldBlockGates(x, y, false)) {
+                    continue;
+                }
                 
-                defensePositions.push({x, y, priority});
+                // Временно добавляем препятствие и проверяем новый путь
+                // Создаём временный obstacleBloc для проверки
+                const tempObstacleBloc = {
+                    getObstacleAt: (tx, ty) => {
+                        if (tx === x && ty === y) {
+                            return {type: 'stone'}; // Временно добавляем препятствие
+                        }
+                        return this.obstacleBloc ? this.obstacleBloc.getObstacleAt(tx, ty) : null;
+                    }
+                };
+                
+                const newPath = this.calculateEnemyPath(tempObstacleBloc, this.towerBloc);
+                const newPathLength = newPath.length;
+                
+                // Если путь удлинился, добавляем позицию в кандидаты
+                if (newPathLength > basePathLength) {
+                    const pathIncrease = newPathLength - basePathLength;
+                    // Приоритет позициям, которые больше удлиняют путь и ближе к вражеской базе
+                    const distanceToEnemyBase = Math.abs(y - (this.hexGrid.height - 1));
+                    const priority = pathIncrease * 10 - distanceToEnemyBase; // Больше увеличение = выше приоритет
+                    
+                    candidatePositions.push({
+                        x, y,
+                        pathIncrease,
+                        priority,
+                        newPathLength
+                    });
+                }
             }
         }
         
-        if (defensePositions.length > 0) {
-            defensePositions.sort((a, b) => a.priority - b.priority);
-            const bestPos = defensePositions[0];
-            // Используем деревья для боковых препятствий
-            return {x: bestPos.x, y: bestPos.y, type: 'tree'};
+        if (candidatePositions.length > 0) {
+            // Сортируем по приоритету (больше увеличение пути = выше приоритет)
+            candidatePositions.sort((a, b) => b.priority - a.priority);
+            const bestPos = candidatePositions[0];
+            // Используем камни для максимального удлинения пути (нельзя разрушить)
+            return {x: bestPos.x, y: bestPos.y, type: 'stone'};
         }
         
-        return null;
+        // Если не нашли позиции, удлиняющие путь - используем простую стратегию
+        return this.findSafeObstaclePosition();
     }
     
     /**
@@ -597,13 +590,128 @@ export class BotAI {
     }
     
     /**
+     * Находит ключевые точки пути вражеских солдат для размещения башен
+     * Ключевые точки: узкие места, повороты, точки где путь проходит долго
+     */
+    findKeyPathPoints(path) {
+        if (!path || path.length < 3) {
+            return [];
+        }
+        
+        const keyPoints = [];
+        
+        // Находим точки, где путь делает поворот (изменение направления)
+        for (let i = 1; i < path.length - 1; i++) {
+            const prev = this.hexGrid.hexToArray(path[i - 1]);
+            const current = this.hexGrid.hexToArray(path[i]);
+            const next = this.hexGrid.hexToArray(path[i + 1]);
+            
+            // Вычисляем направления
+            const dir1 = {dx: current.x - prev.x, dy: current.y - prev.y};
+            const dir2 = {dx: next.x - current.x, dy: next.y - current.y};
+            
+            // Если направление изменилось - это поворот
+            if (dir1.dx !== dir2.dx || dir1.dy !== dir2.dy) {
+                keyPoints.push({
+                    hex: path[i],
+                    arr: current,
+                    type: 'turn',
+                    index: i
+                });
+            }
+        }
+        
+        // Находим узкие места (где путь проходит через ограниченное пространство)
+        // Проверяем точки, где у текущей ячейки мало свободных соседей
+        for (let i = 1; i < path.length - 1; i++) {
+            const currentHex = path[i];
+            const currentArr = this.hexGrid.hexToArray(currentHex);
+            const neighbors = this.hexGrid.getHexNeighbors(currentHex);
+            
+            // Считаем свободных соседей
+            let freeNeighbors = 0;
+            for (const neighbor of neighbors) {
+                if (!this.hexGrid.isBlocked(neighbor, this.obstacleBloc, this.towerBloc, false)) {
+                    freeNeighbors++;
+                }
+            }
+            
+            // Если свободных соседей мало (узкое место)
+            if (freeNeighbors <= 3) {
+                keyPoints.push({
+                    hex: currentHex,
+                    arr: currentArr,
+                    type: 'chokepoint',
+                    index: i,
+                    freeNeighbors
+                });
+            }
+        }
+        
+        return keyPoints;
+    }
+    
+    /**
      * Находит лучшую позицию для строительства башни
+     * Стратегия: размещать башни в ключевых точках пути вражеских солдат
      */
     findBestTowerPosition(existingTowers) {
         const centerX = Math.floor(this.hexGrid.width / 2);
         const baseY = 0; // Игрок 2: верхняя строка
         
-        // Ищем позиции для защиты базы
+        // Вычисляем путь вражеских солдат
+        const enemyPath = this.calculateEnemyPath();
+        
+        if (enemyPath.path && enemyPath.path.length > 0) {
+            // Находим ключевые точки пути
+            const keyPoints = this.findKeyPathPoints(enemyPath.path);
+            
+            // Сортируем ключевые точки по приоритету (узкие места важнее поворотов)
+            const prioritizedPoints = keyPoints.map(point => ({
+                ...point,
+                priority: point.type === 'chokepoint' ? 100 - point.freeNeighbors : 50 - point.index
+            }));
+            
+            prioritizedPoints.sort((a, b) => b.priority - a.priority);
+            
+            // Проверяем каждую ключевую точку
+            for (const keyPoint of prioritizedPoints) {
+                const x = keyPoint.arr.x;
+                const y = keyPoint.arr.y;
+                
+                // Проверяем, свободна ли клетка
+                const hex = this.hexGrid.arrayToHex(x, y);
+                if (this.hexGrid.isBlocked(hex, this.obstacleBloc, this.towerBloc, false)) {
+                    continue;
+                }
+                
+                // Проверяем, нет ли там башни
+                const tower = this.towerBloc.getTowerAt(hex);
+                if (tower) continue;
+                
+                // Проверяем, нет ли там препятствия
+                const obstacle = this.obstacleBloc.getObstacleAt(x, y);
+                if (obstacle) continue;
+                
+                // Проверяем, не слишком ли близко к другим башням
+                let tooClose = false;
+                for (const existingTower of existingTowers) {
+                    const existingHex = this.hexGrid.arrayToHex(existingTower.x, existingTower.y);
+                    const distance = this.hexGrid.hexDistance(hex, existingHex);
+                    if (distance < 2) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                
+                // КРИТИЧНО: Проверяем, не блокирует ли башня путь между воротами
+                if (!tooClose && !this.wouldBlockGates(x, y, true)) {
+                    return {x, y};
+                }
+            }
+        }
+        
+        // Если не нашли ключевые точки или все заняты - используем стратегию защиты базы
         const defensePositions = [];
         
         for (let dx = -this.towerDefenseRadius; dx <= this.towerDefenseRadius; dx++) {
@@ -648,7 +756,7 @@ export class BotAI {
                 }
                 
                 // КРИТИЧНО: Проверяем, не блокирует ли башня путь между воротами
-                if (!tooClose && !this.wouldBlockGates(x, y, true)) { // true = это башня
+                if (!tooClose && !this.wouldBlockGates(x, y, true)) {
                     defensePositions.push({x, y, priority});
                 }
             }
@@ -657,41 +765,6 @@ export class BotAI {
         if (defensePositions.length > 0) {
             defensePositions.sort((a, b) => a.priority - b.priority);
             return defensePositions[0];
-        }
-        
-        // Если не нашли позиции вокруг базы, ищем стратегические позиции
-        const strategicPositions = [];
-        const halfHeight = Math.floor(this.hexGrid.height / 2);
-        
-        for (let y = 1; y < halfHeight; y++) {
-            for (let x = 0; x < this.hexGrid.width; x++) {
-                const hex = this.hexGrid.arrayToHex(x, y);
-                if (this.hexGrid.isBlocked(hex, this.obstacleBloc, this.towerBloc, false)) {
-                    continue;
-                }
-                
-                const tower = this.towerBloc.getTowerAt(hex);
-                if (tower) continue;
-                
-                const obstacle = this.obstacleBloc.getObstacleAt(x, y);
-                if (obstacle) continue;
-                
-                // КРИТИЧНО: Проверяем, не блокирует ли башня путь между воротами
-                if (this.wouldBlockGates(x, y, true)) { // true = это башня
-                    continue; // Пропускаем позиции, которые блокируют путь
-                }
-                
-                // Приоритет позициям ближе к вражеской базе
-                const distanceToEnemyBase = Math.abs(y - (this.hexGrid.height - 1));
-                const priority = distanceToEnemyBase;
-                
-                strategicPositions.push({x, y, priority});
-            }
-        }
-        
-        if (strategicPositions.length > 0) {
-            strategicPositions.sort((a, b) => a.priority - b.priority);
-            return strategicPositions[0];
         }
         
         return null;
