@@ -134,9 +134,52 @@ export class WorkerBloc {
     }
     
     // Добавить задачу в очередь
-    addBuildTaskToQueue(playerId, targetX, targetY, buildType, buildSubType = null) {
+    addBuildTaskToQueue(playerId, targetX, targetY, buildType, buildSubType = null, obstacleBloc = null, towerBloc = null) {
         // buildType: 'obstacle' или 'tower' (или старый формат: 'stone', 'tree', 'basic', 'strong')
         // buildSubType: для obstacle - 'stone' или 'tree', для tower - 'basic' или 'strong'
+        
+        // ВАЖНО: Проверяем, не находится ли уже на этой позиции препятствие, башня или строитель
+        if (obstacleBloc) {
+            const existingObstacle = obstacleBloc.getObstacleAt(targetX, targetY);
+            if (existingObstacle) {
+                // На этой позиции уже есть препятствие
+                return false;
+            }
+        }
+        
+        if (towerBloc) {
+            // Проверяем башни через getState, так как у нас нет прямого доступа к hexGrid
+            const towerState = towerBloc.getState();
+            const existingTower = towerState.towers.find(t => t.x === targetX && t.y === targetY);
+            if (existingTower) {
+                // На этой позиции уже есть башня
+                return false;
+            }
+        }
+        
+        // Проверяем, не находится ли строитель на этой позиции или не строит ли он там
+        const builders = this.state.workers.filter(w => w.playerId === playerId && w.type === 'builder');
+        for (const builder of builders) {
+            // Проверяем текущую позицию строителя
+            if (builder.x === targetX && builder.y === targetY) {
+                // Строитель уже на этой позиции
+                return false;
+            }
+            // Проверяем, не строит ли он на этой позиции
+            if (builder.buildingTarget && builder.buildingTarget.x === targetX && builder.buildingTarget.y === targetY) {
+                // Строитель уже строит на этой позиции
+                return false;
+            }
+        }
+        
+        // Проверяем, нет ли уже такой задачи в очереди
+        if (this.buildQueue[playerId]) {
+            const duplicateTask = this.buildQueue[playerId].find(task => task.x === targetX && task.y === targetY);
+            if (duplicateTask) {
+                // Такая задача уже есть в очереди
+                return false;
+            }
+        }
         
         // Обратная совместимость: если buildType это тип препятствия или башни
         let actualBuildType = buildType;
@@ -218,7 +261,7 @@ export class WorkerBloc {
             // Вычисляем путь сразу
             const builderHex = hexGrid.arrayToHex(closestBuilder.x, closestBuilder.y);
             const targetHex = hexGrid.arrayToHex(task.x, task.y);
-            closestBuilder.path = hexGrid.findPath(builderHex, targetHex, obstacleBloc, towerBloc, true);
+            closestBuilder.path = hexGrid.findPath(builderHex, targetHex, obstacleBloc, towerBloc, true, true);
             closestBuilder.currentHexIndex = 0;
             closestBuilder.moveProgress = 0;
             
@@ -318,7 +361,7 @@ export class WorkerBloc {
             // Идём на базу
             if (!worker.path || worker.targetX !== centerX || worker.targetY !== baseY) {
                 const targetHex = hexGrid.arrayToHex(centerX, baseY);
-                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
+                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true); // allowGates = true, allowObstacles = true для рабочих
                 worker.currentHexIndex = 0;
                 worker.moveProgress = 0;
                 worker.targetX = centerX;
@@ -373,7 +416,7 @@ export class WorkerBloc {
                     // Идём к золоту
                     if (!worker.path || worker.targetX !== goldArr.x || worker.targetY !== goldArr.y) {
                         const targetHex = hexGrid.arrayToHex(goldArr.x, goldArr.y);
-                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
+                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true); // allowGates = true, allowObstacles = true для рабочих
                         worker.currentHexIndex = 0;
                         worker.moveProgress = 0;
                         worker.targetX = goldArr.x;
@@ -411,7 +454,7 @@ export class WorkerBloc {
                 worker.targetX = closestGold.x;
                 worker.targetY = closestGold.y;
                 const targetHex = hexGrid.arrayToHex(closestGold.x, closestGold.y);
-                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
+                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true); // allowGates = true, allowObstacles = true для рабочих
                 worker.currentHexIndex = 0;
                 worker.moveProgress = 0;
                 
@@ -465,6 +508,8 @@ export class WorkerBloc {
         let currentHex = hexGrid.arrayToHex(worker.x, worker.y);
         let currentArr = hexGrid.hexToArray(currentHex);
 
+        // ВАЖНО: Если у строителя есть задача (buildingTarget), он НЕ должен проверять очередь
+        // Очередь проверяется только когда строитель физически на базе и не имеет задачи
         // Если есть задача на строительство
         if (worker.buildingTarget) {
             const target = worker.buildingTarget;
@@ -501,10 +546,140 @@ export class WorkerBloc {
                     worker.lastBuildTime = currentTime;
                     worker.buildingProgress = 0;
                     
-                    // Вычисляем путь на базу
-                    worker.path = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
-                    worker.currentHexIndex = 0;
-                    worker.moveProgress = 0;
+                    // ВАЖНО: Если мы построили препятствие на своей позиции, нужно найти соседнюю свободную ячейку
+                    // для начала пути обратно на базу, иначе строитель застрянет
+                    let pathToBase = null;
+                    if (buildType === 'obstacle' && currentArr.x === target.x && currentArr.y === target.y) {
+                        // Препятствие построено на нашей позиции - ищем соседнюю свободную ячейку
+                        // Рабочие могут проходить через препятствия, поэтому проверяем с allowObstacles = true
+                        const neighbors = hexGrid.getHexNeighbors(currentHex);
+                        let foundFreeNeighbor = false;
+                        for (const neighborHex of neighbors) {
+                            if (hexGrid.isValidHex(neighborHex)) {
+                                // Проверяем, не заблокирована ли ячейка башнями (рабочие могут проходить через препятствия)
+                                const isBlocked = hexGrid.isBlocked(neighborHex, obstacleBloc, towerBloc, true, true);
+                                if (!isBlocked) {
+                                    // Нашли свободную соседнюю ячейку - создаём путь через неё
+                                    // Сначала путь от текущей позиции к соседней ячейке
+                                    const pathToNeighbor = hexGrid.findPath(currentHex, neighborHex, obstacleBloc, towerBloc, true, true);
+                                    // Затем путь от соседней ячейки к базе
+                                    const pathFromNeighborToBase = hexGrid.findPath(neighborHex, baseHex, obstacleBloc, towerBloc, true, true);
+                                    
+                                    if (pathToNeighbor && pathToNeighbor.length > 0 && pathFromNeighborToBase && pathFromNeighborToBase.length > 0) {
+                                        // Объединяем пути: убираем дубликат соседней ячейки
+                                        pathToBase = [...pathToNeighbor];
+                                        // Добавляем путь от соседней ячейки к базе, пропуская первую ячейку (она уже есть)
+                                        for (let i = 1; i < pathFromNeighborToBase.length; i++) {
+                                            pathToBase.push(pathFromNeighborToBase[i]);
+                                        }
+                                        foundFreeNeighbor = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (!foundFreeNeighbor) {
+                            // Не нашли свободную соседнюю ячейку - пытаемся найти путь с текущей позиции
+                            // Рабочие могут проходить через препятствия, поэтому путь должен найтись
+                            pathToBase = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true, true);
+                        }
+                    } else {
+                        // Обычный случай - путь на базу
+                        pathToBase = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true, true);
+                    }
+                    
+                    // Проверяем, что путь найден и содержит хотя бы две точки
+                    if (!pathToBase || pathToBase.length === 0) {
+                        // Путь не найден - пытаемся найти любой путь к базе
+                        // Это может произойти, если препятствие полностью заблокировало путь
+                        // В этом случае рабочий останется на месте до следующего кадра
+                        console.warn(`Worker ${worker.id}: Cannot find path to base after building ${buildType} at (${target.x}, ${target.y})`);
+                        // Очищаем задачу, но оставляем рабочего на месте
+                        worker.buildingTarget = null;
+                        worker.lastBuildTime = currentTime;
+                        worker.buildingProgress = 0;
+                        worker.path = null;
+                        worker.targetX = null;
+                        worker.targetY = null;
+                        this.emit();
+                        return;
+                    }
+                    
+                    // Проверяем, что путь содержит хотя бы две точки (текущая позиция и следующая)
+                    // Если путь содержит только одну точку, значит рабочий уже на базе или путь неправильный
+                    if (pathToBase.length === 1) {
+                        // Путь содержит только одну точку - проверяем, не на базе ли уже рабочий
+                        const pathArr = hexGrid.hexToArray(pathToBase[0]);
+                        if (pathArr.x === centerX && pathArr.y === baseY) {
+                            // Рабочий уже на базе - очищаем задачу
+                            worker.buildingTarget = null;
+                            worker.lastBuildTime = currentTime;
+                            worker.buildingProgress = 0;
+                            worker.path = null;
+                            worker.targetX = null;
+                            worker.targetY = null;
+                            this.emit();
+                            return;
+                        } else {
+                            // Путь содержит только одну точку, но это не база - путь неправильный
+                            console.warn(`Worker ${worker.id}: Path to base contains only one point (not base) after building ${buildType} at (${target.x}, ${target.y})`);
+                            // Пытаемся найти путь ещё раз
+                            pathToBase = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true, true);
+                            if (!pathToBase || pathToBase.length <= 1) {
+                                // Путь всё ещё не найден - очищаем задачу
+                                worker.buildingTarget = null;
+                                worker.lastBuildTime = currentTime;
+                                worker.buildingProgress = 0;
+                                worker.path = null;
+                                worker.targetX = null;
+                                worker.targetY = null;
+                                this.emit();
+                                return;
+                            }
+                        }
+                    }
+                    
+                    // ВАЖНО: Находим текущую позицию строителя в пути для плавного движения
+                    // Ищем, на какой позиции в пути находится текущая позиция строителя
+                    let startIndex = 0;
+                    let foundCurrentPosition = false;
+                    
+                    for (let i = 0; i < pathToBase.length; i++) {
+                        const pathHex = pathToBase[i];
+                        const pathArr = hexGrid.hexToArray(pathHex);
+                        if (pathArr.x === currentArr.x && pathArr.y === currentArr.y) {
+                            startIndex = i;
+                            foundCurrentPosition = true;
+                            break;
+                        }
+                    }
+                    
+                    // Если текущая позиция не найдена в пути, начинаем с начала
+                    // Но если первая точка пути совпадает с текущей позицией, начинаем со следующей
+                    if (!foundCurrentPosition && pathToBase.length > 0) {
+                        const firstPathHex = pathToBase[0];
+                        const firstPathArr = hexGrid.hexToArray(firstPathHex);
+                        if (firstPathArr.x === currentArr.x && firstPathArr.y === currentArr.y) {
+                            // Первая точка совпадает - начинаем со следующей
+                            startIndex = 1;
+                            if (startIndex >= pathToBase.length) {
+                                // Путь содержит только текущую позицию - мы уже на базе
+                                worker.buildingTarget = null;
+                                worker.lastBuildTime = currentTime;
+                                worker.buildingProgress = 0;
+                                worker.path = null;
+                                worker.targetX = null;
+                                worker.targetY = null;
+                                this.emit();
+                                return;
+                            }
+                        }
+                    }
+                    
+                    // Устанавливаем путь на базу, начиная с найденной позиции
+                    worker.path = pathToBase;
+                    worker.currentHexIndex = startIndex;
+                    worker.moveProgress = 0; // Начинаем движение с 0% прогресса для плавности
                     worker.targetX = centerX;
                     worker.targetY = baseY;
                     
@@ -524,7 +699,7 @@ export class WorkerBloc {
                 // Идём к месту строительства
                 if (!worker.path || worker.targetX !== target.x || worker.targetY !== target.y) {
                     const targetHex = hexGrid.arrayToHex(target.x, target.y);
-                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
+                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true); // allowGates = true, allowObstacles = true для рабочих
                     worker.currentHexIndex = 0;
                     worker.moveProgress = 0;
                     worker.targetX = target.x;
@@ -546,13 +721,17 @@ export class WorkerBloc {
                 }
             }
         }
-        // Если на базе и нет задачи - проверяем очередь
+        // Если НЕТ задачи на строительство - проверяем, на базе ли мы, и если да - берём задачу из очереди
+        // ВАЖНО: Очередь проверяется ТОЛЬКО когда строитель физически на базе И не имеет задачи
         else {
             const centerX = Math.floor(hexGrid.width / 2);
             const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
-            if (currentArr.x === centerX && currentArr.y === baseY) {
-                // На базе - сначала проверяем очередь задач
-                if (!worker.buildingTarget && this.buildQueue[worker.playerId] && this.buildQueue[worker.playerId].length > 0) {
+            const isOnBase = currentArr.x === centerX && currentArr.y === baseY;
+            
+            // КРИТИЧНО: Проверяем очередь ТОЛЬКО если строитель на базе И не имеет задачи
+            if (isOnBase && !worker.buildingTarget) {
+                // На базе и нет задачи - проверяем очередь задач
+                if (this.buildQueue[worker.playerId] && this.buildQueue[worker.playerId].length > 0) {
                     const task = this.buildQueue[worker.playerId].shift();
                     if (task) {
                         worker.buildingTarget = { 
@@ -566,7 +745,7 @@ export class WorkerBloc {
                         worker.buildingProgress = 0;
                         // Вычисляем путь к цели сразу
                         const targetHex = hexGrid.arrayToHex(task.x, task.y);
-                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true);
+                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
                         worker.currentHexIndex = 0;
                         worker.moveProgress = 0;
                         
@@ -584,11 +763,19 @@ export class WorkerBloc {
                         
                         this.emit();
                         // Продолжаем обработку - путь будет использован в секции движения ниже
-                        // НЕ возвращаемся, чтобы движение началось в этом же кадре
                     } else {
-                        return; // Нет задач в очереди
+                        // Нет задач в очереди - очищаем флаги движения
+                        if (worker.path || worker.targetX !== null || worker.targetY !== null) {
+                            worker.path = null;
+                            worker.targetX = null;
+                            worker.targetY = null;
+                            worker.currentHexIndex = 0;
+                            worker.moveProgress = 0;
+                            this.emit();
+                        }
+                        return;
                     }
-                } else if (!worker.buildingTarget) {
+                } else {
                     // На базе, нет задачи и нет очереди - очищаем все флаги движения
                     if (worker.path || worker.targetX !== null || worker.targetY !== null) {
                         worker.path = null;
@@ -596,30 +783,9 @@ export class WorkerBloc {
                         worker.targetY = null;
                         worker.currentHexIndex = 0;
                         worker.moveProgress = 0;
-                        this.emit(); // Уведомляем об изменении состояния
+                        this.emit();
                     }
-                    return; // На базе, нет задачи и нет очереди
-                }
-                
-                // Если есть buildingTarget (только что назначен из очереди или уже был), 
-                // но путь не вычислен или слишком короткий - вычисляем заново
-                if (worker.buildingTarget) {
-                    const target = worker.buildingTarget;
-                    // Проверяем, что путь правильный и ведёт к цели
-                    if (!worker.path || worker.path.length <= 1 || worker.targetX !== target.x || worker.targetY !== target.y) {
-                        const targetHex = hexGrid.arrayToHex(target.x, target.y);
-                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true);
-                        if (worker.path && worker.path.length > 1) {
-                            worker.currentHexIndex = 0;
-                            worker.moveProgress = 0;
-                            worker.targetX = target.x;
-                            worker.targetY = target.y;
-                            this.emit();
-                        } else {
-                            return;
-                        }
-                    }
-                    // Если путь есть и правильный - продолжаем обработку, чтобы начать движение
+                    return;
                 }
             } else {
                 // Не на базе - если есть задача, идём к цели, иначе возвращаемся на базу
@@ -628,7 +794,7 @@ export class WorkerBloc {
                     const target = worker.buildingTarget;
                     if (!worker.path || worker.targetX !== target.x || worker.targetY !== target.y) {
                         const targetHex = hexGrid.arrayToHex(target.x, target.y);
-                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true);
+                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
                         worker.currentHexIndex = 0;
                         worker.moveProgress = 0;
                         worker.targetX = target.x;
@@ -637,14 +803,16 @@ export class WorkerBloc {
                     }
                 } else {
                     // Нет задачи - возвращаемся на базу
+                    const centerX = Math.floor(hexGrid.width / 2);
+                    const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
                     if (!worker.path || worker.targetX !== centerX || worker.targetY !== baseY) {
                         const targetHex = hexGrid.arrayToHex(centerX, baseY);
-                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true); // allowGates = true для рабочих
+                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
                         worker.currentHexIndex = 0;
                         worker.moveProgress = 0;
                         worker.targetX = centerX;
                         worker.targetY = baseY;
-                        this.emit(); // Уведомляем об изменении пути
+                        this.emit();
                     }
                 }
             }
@@ -659,7 +827,7 @@ export class WorkerBloc {
                 if (worker.targetX !== target.x || worker.targetY !== target.y) {
                     // Путь не соответствует задаче - пересчитываем
                     const targetHex = hexGrid.arrayToHex(target.x, target.y);
-                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true);
+                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
                     if (worker.path && worker.path.length > 1) {
                         worker.currentHexIndex = 0;
                         worker.moveProgress = 0;
@@ -678,7 +846,7 @@ export class WorkerBloc {
                 // Если путь не ведёт на базу - пересчитываем
                 if (worker.targetX !== centerX || worker.targetY !== baseY) {
                     const baseHex = hexGrid.arrayToHex(centerX, baseY);
-                    worker.path = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true);
+                    worker.path = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true, true);
                     if (worker.path && worker.path.length > 1) {
                         worker.currentHexIndex = 0;
                         worker.moveProgress = 0;
@@ -708,6 +876,7 @@ export class WorkerBloc {
                     worker.moveProgress += pixelSpeed / pixelDistance;
                 }
                 
+                // Если прогресс >= 1.0, переходим к следующей ячейке
                 if (worker.moveProgress >= 1.0) {
                     worker.currentHexIndex += 1;
                     worker.moveProgress = 0;
@@ -715,52 +884,210 @@ export class WorkerBloc {
                     worker.x = nextArr.x;
                     worker.y = nextArr.y;
                 }
+            }
+            
+            // Обновляем currentArr на основе актуальной позиции worker.x и worker.y
+            currentHex = hexGrid.arrayToHex(worker.x, worker.y);
+            currentArr = hexGrid.hexToArray(currentHex);
+            
+            // Проверяем, достигли ли мы цели (только если есть задача)
+            if (worker.buildingTarget) {
+                const target = worker.buildingTarget;
+                const isOnTarget = currentArr.x === target.x && currentArr.y === target.y;
+                
+                if (isOnTarget) {
+                    // Достигли цели - очищаем путь и начинаем строительство
+                    worker.path = null;
+                    worker.targetX = null;
+                    worker.targetY = null;
+                    worker.currentHexIndex = 0;
+                    worker.moveProgress = 0;
+                    this.emit();
+                    return; // Начинаем строительство в следующем кадре
+                }
+            }
+            
+            // Проверяем, достигли ли мы конца пути (каждый кадр)
+            if (worker.path && worker.path.length > 0) {
+                const finalHexIndex = worker.path.length - 1;
+                const currentHexIndex = Math.floor(worker.currentHexIndex);
+                
+                // Если мы на последней ячейке пути или прошли её
+                if (currentHexIndex >= finalHexIndex) {
+                    // Достигли конца пути - обновляем позицию на финальную
+                    const finalHex = worker.path[finalHexIndex];
+                    const finalArr = hexGrid.hexToArray(finalHex);
+                    worker.x = finalArr.x;
+                    worker.y = finalArr.y;
+                    worker.currentHexIndex = finalHexIndex;
+                    worker.moveProgress = 0;
+                    
+                    // Обновляем currentArr для проверок
+                    currentArr = finalArr;
+                    currentHex = finalHex;
+                    
+                    // Очищаем путь
+                    worker.path = null;
+                    worker.targetX = null;
+                    worker.targetY = null;
+                    
+                    // Проверяем, что делать дальше
+                    if (worker.buildingTarget) {
+                        const target = worker.buildingTarget;
+                        if (currentArr.x === target.x && currentArr.y === target.y) {
+                            // Достигли цели - начинаем строительство в следующем кадре
+                            this.emit();
+                            return;
+                        } else {
+                            // Не на цели - возможно, путь был неправильным, пересчитываем
+                            const targetHex = hexGrid.arrayToHex(target.x, target.y);
+                            worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
+                            if (worker.path && worker.path.length > 1) {
+                                worker.currentHexIndex = 0;
+                                worker.moveProgress = 0;
+                                worker.targetX = target.x;
+                                worker.targetY = target.y;
+                                this.emit();
+                            } else {
+                                // Путь не найден - отменяем задачу и возвращаемся на базу
+                                worker.buildingTarget = null;
+                                const centerX = Math.floor(hexGrid.width / 2);
+                                const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
+                                const baseHex = hexGrid.arrayToHex(centerX, baseY);
+                                worker.path = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true, true);
+                                if (worker.path && worker.path.length > 1) {
+                                    worker.currentHexIndex = 0;
+                                    worker.moveProgress = 0;
+                                    worker.targetX = centerX;
+                                    worker.targetY = baseY;
+                                    this.emit();
+                                } else {
+                                    this.emit();
+                                }
+                            }
+                            return;
+                        }
+                    } else {
+                        // Нет задачи - проверяем, достигли ли мы базы
+                        const centerX = Math.floor(hexGrid.width / 2);
+                        const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
+                        const isOnBase = currentArr.x === centerX && currentArr.y === baseY;
+                        if (isOnBase && !worker.buildingTarget) {
+                            // Достигли базы и нет задачи - проверяем очередь задач
+                            if (this.buildQueue[worker.playerId] && this.buildQueue[worker.playerId].length > 0) {
+                                const task = this.buildQueue[worker.playerId].shift();
+                                if (task) {
+                                    worker.buildingTarget = { 
+                                        x: task.x, 
+                                        y: task.y, 
+                                        buildType: task.buildType || (task.type === 'stone' || task.type === 'tree' ? 'obstacle' : 'tower'),
+                                        type: task.type || task.buildSubType || 'stone' 
+                                    };
+                                    worker.targetX = task.x;
+                                    worker.targetY = task.y;
+                                    worker.buildingProgress = 0;
+                                    const targetHex = hexGrid.arrayToHex(task.x, task.y);
+                                    worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
+                                    if (worker.path && worker.path.length > 1) {
+                                        worker.currentHexIndex = 0;
+                                        worker.moveProgress = 0;
+                                        this.emit();
+                                    } else {
+                                        // Путь не найден - возвращаем задачу в очередь
+                                        worker.buildingTarget = null;
+                                        worker.targetX = null;
+                                        worker.targetY = null;
+                                        this.buildQueue[worker.playerId].unshift(task);
+                                        this.emit();
+                                    }
+                                }
+                            } else {
+                                this.emit();
+                            }
+                            return; // На базе
+                        } else {
+                            // Не на базе и нет задачи - идём на базу
+                            const centerX = Math.floor(hexGrid.width / 2);
+                            const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
+                            const baseHex = hexGrid.arrayToHex(centerX, baseY);
+                            worker.path = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true, true);
+                            if (worker.path && worker.path.length > 1) {
+                                worker.currentHexIndex = 0;
+                                worker.moveProgress = 0;
+                                worker.targetX = centerX;
+                                worker.targetY = baseY;
+                                this.emit();
+                            } else {
+                                this.emit();
+                            }
+                            return;
+                        }
+                    }
+                }
             } else {
                 // Достигли конца пути - обновляем позицию на финальную позицию пути
                 const finalHex = worker.path[worker.path.length - 1];
                 const finalArr = hexGrid.hexToArray(finalHex);
                 
                 // ВСЕГДА обновляем позицию, даже если она кажется правильной
-                // Это важно, так как currentArr может быть устаревшим
                 worker.x = finalArr.x;
                 worker.y = finalArr.y;
-                // Обновляем currentArr для дальнейших проверок
                 currentArr = finalArr;
                 currentHex = finalHex;
                 
-                // Пересчитываем currentHex и currentArr из обновлённой позиции для точности
-                const updatedHex = hexGrid.arrayToHex(worker.x, worker.y);
-                const updatedArr = hexGrid.hexToArray(updatedHex);
-                currentArr = updatedArr;
-                currentHex = updatedHex;
+                // Очищаем путь
+                worker.path = null;
+                worker.targetX = null;
+                worker.targetY = null;
+                worker.currentHexIndex = 0;
+                worker.moveProgress = 0;
                 
-                // Если это была задача на строительство и мы достигли конца пути - проверяем, на цели ли мы
+                // Проверяем, что делать дальше
                 if (worker.buildingTarget) {
                     const target = worker.buildingTarget;
-                    // Проверяем, достигли ли мы цели
                     if (currentArr.x === target.x && currentArr.y === target.y) {
-                        // Достигли цели - очищаем путь и начинаем строительство
-                        worker.path = null;
-                        worker.targetX = null;
-                        worker.targetY = null;
-                        worker.currentHexIndex = 0;
-                        worker.moveProgress = 0;
+                        // Достигли цели - начинаем строительство в следующем кадре
                         this.emit();
-                        return; // Начинаем строительство в следующем кадре
+                        return;
                     }
                 } else {
                     // Нет задачи - проверяем, достигли ли мы базы
                     const centerX = Math.floor(hexGrid.width / 2);
                     const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
                     if (currentArr.x === centerX && currentArr.y === baseY) {
-                        // Достигли базы - очищаем путь
-                        worker.path = null;
-                        worker.targetX = null;
-                        worker.targetY = null;
-                        worker.currentHexIndex = 0;
-                        worker.moveProgress = 0;
-                        this.emit();
-                        return; // На базе, в следующем кадре получим новую задачу
+                        // Достигли базы - проверяем очередь задач
+                        if (this.buildQueue[worker.playerId] && this.buildQueue[worker.playerId].length > 0) {
+                            const task = this.buildQueue[worker.playerId].shift();
+                            if (task) {
+                                worker.buildingTarget = { 
+                                    x: task.x, 
+                                    y: task.y, 
+                                    buildType: task.buildType || (task.type === 'stone' || task.type === 'tree' ? 'obstacle' : 'tower'),
+                                    type: task.type || task.buildSubType || 'stone' 
+                                };
+                                worker.targetX = task.x;
+                                worker.targetY = task.y;
+                                worker.buildingProgress = 0;
+                                const targetHex = hexGrid.arrayToHex(task.x, task.y);
+                                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
+                                if (worker.path && worker.path.length > 1) {
+                                    worker.currentHexIndex = 0;
+                                    worker.moveProgress = 0;
+                                    this.emit();
+                                    // Продолжаем выполнение - движение начнётся
+                                } else {
+                                    // Путь не найден - возвращаем задачу в очередь
+                                    worker.buildingTarget = null;
+                                    worker.targetX = null;
+                                    worker.targetY = null;
+                                    this.buildQueue[worker.playerId].unshift(task);
+                                    this.emit();
+                                }
+                            }
+                        } else {
+                            this.emit();
+                        }
+                        return; // На базе
                     }
                 }
                 
@@ -790,7 +1117,7 @@ export class WorkerBloc {
                         return;
                     } else {
                         // Цель далеко - пересчитываем путь
-                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true);
+                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
                         if (worker.path && worker.path.length > 1) {
                             worker.currentHexIndex = 0;
                             worker.moveProgress = 0;

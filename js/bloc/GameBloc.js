@@ -80,7 +80,14 @@ export class GameBloc {
     }
 
     getState() {
-        return { ...this.state };
+        // Глубокое копирование состояния, чтобы гарантировать, что players всегда присутствует
+        return {
+            ...this.state,
+            players: {
+                1: { ...this.state.players[1] },
+                2: { ...this.state.players[2] }
+            }
+        };
     }
 
     reset() {

@@ -1005,10 +1005,76 @@ class Game {
 
     updateUI(gameState) {
         // Обновление ресурсов игроков
-        document.getElementById('p1-gold').textContent = gameState.players[1].gold;
-        document.getElementById('p1-health').textContent = gameState.players[1].baseHealth;
-        document.getElementById('p2-gold').textContent = gameState.players[2].gold;
-        document.getElementById('p2-health').textContent = gameState.players[2].baseHealth;
+        // Проверяем, что игроки существуют перед обновлением UI
+        if (!gameState || !gameState.players) {
+            // Если игроки не инициализированы, инициализируем их
+            if (this.gameBloc) {
+                const state = this.gameBloc.getState();
+                if (state && state.players) {
+                    gameState = state;
+                } else {
+                    // Принудительно создаём игроков, если их нет
+                    gameState = {
+                        ...gameState,
+                        players: {
+                            1: { gold: 500, baseHealth: 100 },
+                            2: { gold: 500, baseHealth: 100 }
+                        }
+                    };
+                }
+            }
+        }
+        
+        // Обновляем информацию о первом игроке
+        const p1GoldEl = document.getElementById('p1-gold');
+        const p1HealthEl = document.getElementById('p1-health');
+        const player1Info = document.getElementById('player1-info');
+        
+        if (player1Info) {
+            // Убеждаемся, что элемент видим
+            player1Info.style.display = 'block';
+            player1Info.style.visibility = 'visible';
+            player1Info.style.opacity = '1';
+        }
+        
+        if (gameState.players && gameState.players[1]) {
+            if (p1GoldEl) {
+                p1GoldEl.textContent = gameState.players[1].gold || 0;
+                p1GoldEl.style.display = 'inline';
+            }
+            if (p1HealthEl) {
+                p1HealthEl.textContent = gameState.players[1].baseHealth || 0;
+                p1HealthEl.style.display = 'inline';
+            }
+        } else {
+            // Если игрок не существует, устанавливаем значения по умолчанию
+            if (p1GoldEl) {
+                p1GoldEl.textContent = '500';
+            }
+            if (p1HealthEl) {
+                p1HealthEl.textContent = '100';
+            }
+        }
+        
+        // Обновляем информацию о втором игроке
+        if (gameState.players && gameState.players[2]) {
+            const p2GoldEl = document.getElementById('p2-gold');
+            const p2HealthEl = document.getElementById('p2-health');
+            if (p2GoldEl) {
+                p2GoldEl.textContent = gameState.players[2].gold || 0;
+            }
+            if (p2HealthEl) {
+                p2HealthEl.textContent = gameState.players[2].baseHealth || 0;
+            }
+        }
+        
+        // Обновление имени игрока 1
+        const player1Header = document.querySelector('#player1-info h3');
+        if (player1Header) {
+            player1Header.textContent = 'Игрок 1';
+            player1Header.style.display = 'block';
+            player1Header.style.visibility = 'visible';
+        }
         
         // Обновление имени игрока 2 / бота в зависимости от режима
         const player2Header = document.querySelector('#player2-info h3');

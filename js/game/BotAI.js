@@ -136,7 +136,7 @@ export class BotAI {
                 }
                 
                 // Если все проверки пройдены - добавляем в очередь
-                if (this.workerBloc.addBuildTaskToQueue(2, obstaclePos.x, obstaclePos.y, 'obstacle', obstaclePos.type)) {
+                if (this.workerBloc.addBuildTaskToQueue(2, obstaclePos.x, obstaclePos.y, 'obstacle', obstaclePos.type, this.obstacleBloc, this.towerBloc)) {
                     const queueSize = this.workerBloc.getBuildQueue(2).length;
                     this.currentState.currentAction = `Строительство препятствия (${obstaclePos.type})`;
                     this.currentState.priority = '3';
@@ -170,7 +170,7 @@ export class BotAI {
                             const towerType = player.gold >= 300 ? 'strong' : 'basic';
                             
                             // Добавляем задачу на строительство башни в очередь
-                            if (this.workerBloc.addBuildTaskToQueue(2, towerPos.x, towerPos.y, 'tower', towerType)) {
+                            if (this.workerBloc.addBuildTaskToQueue(2, towerPos.x, towerPos.y, 'tower', towerType, this.obstacleBloc, this.towerBloc)) {
                                 const queueSize = this.workerBloc.getBuildQueue(2).length;
                                 this.currentState.currentAction = `Строительство башни (${towerType})`;
                                 this.currentState.priority = '4';

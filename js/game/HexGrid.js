@@ -219,7 +219,7 @@ export class HexGrid {
         return hexesInRange.some(hex => this.hexKey(hex) === targetKey);
     }
 
-    isBlocked(hex, obstacleBloc, towerBloc, allowGates = false) {
+    isBlocked(hex, obstacleBloc, towerBloc, allowGates = false, allowObstacles = false) {
         // Проверяем, заблокирована ли ячейка препятствием или башней
         // Нормализуем hex координаты перед преобразованием
         const normalizedHex = this.hexRound(hex);
@@ -298,7 +298,7 @@ export class HexGrid {
         return `${hex.q},${hex.r},${hex.s}`;
     }
 
-    findPath(startHex, targetHex, obstacleBloc = null, towerBloc = null, allowGates = false) {
+    findPath(startHex, targetHex, obstacleBloc = null, towerBloc = null, allowGates = false, allowObstacles = false) {
         // Очищаем предыдущую отладочную информацию
         this.lastPathfindingDebug = {
             startHex: null,
@@ -339,10 +339,10 @@ export class HexGrid {
         }
         
         // Используем A* алгоритм
-        return this.findPathAStar(startHex, targetHex, obstacleBloc, towerBloc, allowGates);
+        return this.findPathAStar(startHex, targetHex, obstacleBloc, towerBloc, allowGates, allowObstacles);
     }
     
-    findPathAStar(startHex, targetHex, obstacleBloc = null, towerBloc = null, allowGates = false) {
+    findPathAStar(startHex, targetHex, obstacleBloc = null, towerBloc = null, allowGates = false, allowObstacles = false) {
         // Полный алгоритм A* для сложных случаев
         // ВАЖНО: алгоритм использует getHexNeighbors(), который правильно определяет соседей
         // для чётных и нечётных столбцов в odd-r offset координатах
@@ -425,7 +425,7 @@ export class HexGrid {
                     return {
                         hex: `${n.q},${n.r},${n.s}`,
                         arr: `(${nArr.x},${nArr.y})`,
-                        blocked: this.isBlocked(n, obstacleBloc, towerBloc, allowGates)
+                        blocked: this.isBlocked(n, obstacleBloc, towerBloc, allowGates, allowObstacles)
                     };
                 });
             }
@@ -465,7 +465,7 @@ export class HexGrid {
                 if (closedSet.has(neighborKey)) continue;
                 
                 // Пропускаем заблокированные ячейки (но разрешаем цель даже если она заблокирована)
-                if (neighborKey !== targetKey && this.isBlocked(neighbor, obstacleBloc, towerBloc, allowGates)) {
+                if (neighborKey !== targetKey && this.isBlocked(neighbor, obstacleBloc, towerBloc, allowGates, allowObstacles)) {
                     continue;
                 }
                 
