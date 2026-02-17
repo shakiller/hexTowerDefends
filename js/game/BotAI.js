@@ -26,6 +26,14 @@ export class BotAI {
             priority: '-',
             lastAction: '-'
         };
+        
+        // Система обучения стратегии игрока 1
+        this.learnedStrategy = {
+            lastAnalysisTime: 0,
+            analysisInterval: 5000, // Анализ каждые 5 секунд
+            towerPatterns: [], // Паттерны размещения башен
+            obstaclePatterns: [] // Паттерны размещения препятствий
+        };
     }
     
     getState() {
