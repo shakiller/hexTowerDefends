@@ -49,6 +49,16 @@ export class BotAI {
             return;
         }
 
+        // Инициализируем learnedStrategy, если его нет (на случай проблем с кэшем)
+        if (!this.learnedStrategy) {
+            this.learnedStrategy = {
+                lastAnalysisTime: 0,
+                analysisInterval: 5000, // Анализ каждые 5 секунд
+                towerPatterns: [], // Паттерны размещения башен
+                obstaclePatterns: [] // Паттерны размещения препятствий
+            };
+        }
+
         // Периодически анализируем стратегию первого игрока для обучения
         if (currentTime - this.learnedStrategy.lastAnalysisTime >= this.learnedStrategy.analysisInterval) {
             this.analyzePlayer1Strategy();
@@ -67,6 +77,15 @@ export class BotAI {
      * Анализирует стратегию первого игрока и сохраняет паттерны для обучения
      */
     analyzePlayer1Strategy() {
+        // Инициализируем learnedStrategy, если его нет
+        if (!this.learnedStrategy) {
+            this.learnedStrategy = {
+                lastAnalysisTime: 0,
+                analysisInterval: 5000,
+                towerPatterns: [],
+                obstaclePatterns: []
+            };
+        }
         const towerState = this.towerBloc.getState();
         const centerX = Math.floor(this.hexGrid.width / 2);
         const halfHeight = Math.floor(this.hexGrid.height / 2);
@@ -133,6 +152,15 @@ export class BotAI {
      * Находит позицию для препятствия на основе изученной стратегии первого игрока
      */
     findObstaclePositionFromLearning() {
+        // Инициализируем learnedStrategy, если его нет
+        if (!this.learnedStrategy) {
+            this.learnedStrategy = {
+                lastAnalysisTime: 0,
+                analysisInterval: 5000,
+                towerPatterns: [],
+                obstaclePatterns: []
+            };
+        }
         if (this.learnedStrategy.obstaclePatterns.length === 0) {
             return null;
         }
@@ -185,6 +213,15 @@ export class BotAI {
      * Находит позицию для башни на основе изученной стратегии первого игрока
      */
     findTowerPositionFromLearning(existingTowers) {
+        // Инициализируем learnedStrategy, если его нет
+        if (!this.learnedStrategy) {
+            this.learnedStrategy = {
+                lastAnalysisTime: 0,
+                analysisInterval: 5000,
+                towerPatterns: [],
+                obstaclePatterns: []
+            };
+        }
         if (this.learnedStrategy.towerPatterns.length === 0) {
             return null;
         }
