@@ -619,12 +619,39 @@ export class WorkerBloc {
         // Проверка зависания для сборщика
         // Различаем состояния:
         // 1. Нет задания (нет цели золота и не несёт золото) - НОРМАЛЬНО, не зависание
-        // 2. Есть задание, но не двигается - это может быть зависание
+        // 2. Цель потеряна (золото исчезло) - НОРМАЛЬНО, не зависание
+        // 3. Есть валидное задание, но не двигается - это может быть зависание
         
-        const hasTask = worker.carryingGold || worker.targetGoldId;
-        const isSearchingForGold = !worker.carryingGold && !worker.targetGoldId;
+        // Сначала проверяем валидность цели золота
+        let hasValidGoldTarget = false;
+        if (worker.targetGoldId) {
+            const goldPile = goldBloc.getState().goldPiles.find(p => p.id === worker.targetGoldId);
+            if (goldPile && !goldPile.collected) {
+                // Проверяем, не находится ли золото на базе (заблокировано)
+                const goldHex = hexGrid.arrayToHex(goldPile.x, goldPile.y);
+                const isBlocked = hexGrid.isBlocked(goldHex, obstacleBloc, towerBloc, false);
+                if (!isBlocked) {
+                    hasValidGoldTarget = true;
+                } else {
+                    // Золото на базе - сбрасываем цель
+                    worker.targetGoldId = null;
+                    worker.path = null;
+                    worker.targetX = null;
+                    worker.targetY = null;
+                }
+            } else {
+                // Золото исчезло - сбрасываем цель
+                worker.targetGoldId = null;
+                worker.path = null;
+                worker.targetX = null;
+                worker.targetY = null;
+            }
+        }
         
-        // Если нет задания - это нормальное состояние, не зависание
+        const hasTask = worker.carryingGold || hasValidGoldTarget;
+        const isSearchingForGold = !worker.carryingGold && !hasValidGoldTarget;
+        
+        // Если нет задания или цель потеряна - это нормальное состояние, не зависание
         if (isSearchingForGold) {
             // Сборщик ищет новое золото - обновляем время, чтобы не считался зависшим
             worker.lastMoveTime = currentTime;
@@ -632,18 +659,19 @@ export class WorkerBloc {
             return false; // Не удалять
         }
         
-        // Если есть задание - проверяем зависание
+        // Если есть валидное задание - проверяем зависание
         if (hasTask) {
             const currentPos = { x: worker.x, y: worker.y };
             const hasMoved = currentPos.x !== worker.lastPosition.x || currentPos.y !== worker.lastPosition.y;
-            const isPerformingTask = worker.targetGoldId && currentArr.x === worker.targetX && currentArr.y === worker.targetY;
+            const isPerformingTask = hasValidGoldTarget && currentArr.x === worker.targetX && currentArr.y === worker.targetY;
             
             // Зависание определяется только если:
-            // - Есть задание (несёт золото или идёт к золоту)
+            // - Есть валидное задание (несёт золото или идёт к валидному золоту)
             // - НЕ двигается
             // - НЕ выполняет задачу (не собирает золото)
             // - Есть путь (должен двигаться, но не может)
-            const shouldBeMoving = (worker.path && worker.path.length > 1) || (worker.carryingGold && (!worker.path || worker.path.length <= 1));
+            const hasValidPath = worker.path && worker.path.length > 1;
+            const shouldBeMoving = hasValidPath || (worker.carryingGold && !hasValidPath);
             
             if (!hasMoved && !isPerformingTask && shouldBeMoving) {
                 const timeSinceLastMove = currentTime - (worker.lastMoveTime || currentTime);
@@ -652,29 +680,40 @@ export class WorkerBloc {
                 
                 // Пересчёт пути если не двигается более 5 секунд
                 if (timeSinceLastMove >= STUCK_RECALCULATE_INTERVAL && timeSinceLastMove < STUCK_REMOVE_TIME) {
-                    if (worker.targetGoldId) {
+                    if (hasValidGoldTarget) {
                         const goldPile = goldBloc.getState().goldPiles.find(p => p.id === worker.targetGoldId);
                         if (goldPile && !goldPile.collected) {
                             const targetHex = hexGrid.arrayToHex(goldPile.x, goldPile.y);
-                            worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
-                            worker.currentHexIndex = 0;
-                            worker.moveProgress = 0;
-                            
-                            if (typeof window !== 'undefined' && window.logger) {
-                                window.logger.warn('worker', `Worker ${worker.id} stuck, recalculating path to gold`, {
-                                    workerId: worker.id,
-                                    type: worker.type,
-                                    position: { x: worker.x, y: worker.y },
-                                    timeSinceLastMove: timeSinceLastMove.toFixed(0)
-                                });
+                            const newPath = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
+                            if (newPath && newPath.length > 1) {
+                                worker.path = newPath;
+                                worker.currentHexIndex = 0;
+                                worker.moveProgress = 0;
+                                
+                                if (typeof window !== 'undefined' && window.logger) {
+                                    window.logger.warn('worker', `Worker ${worker.id} stuck, recalculating path to gold`, {
+                                        workerId: worker.id,
+                                        type: worker.type,
+                                        position: { x: worker.x, y: worker.y },
+                                        timeSinceLastMove: timeSinceLastMove.toFixed(0)
+                                    });
+                                }
+                            } else {
+                                // Путь не найден - сбрасываем цель, это не зависание
+                                worker.targetGoldId = null;
+                                worker.path = null;
+                                worker.targetX = null;
+                                worker.targetY = null;
+                                worker.lastMoveTime = currentTime;
+                                worker.lastPosition = { x: currentPos.x, y: currentPos.y };
+                                return false; // Не удалять - путь не найден, это не зависание
                             }
                         } else {
-                            // Золото исчезло - сбрасываем цель, сборщик будет искать новое
+                            // Золото исчезло - сбрасываем цель
                             worker.targetGoldId = null;
                             worker.path = null;
                             worker.targetX = null;
                             worker.targetY = null;
-                            // Обновляем время, чтобы не считался зависшим при поиске нового золота
                             worker.lastMoveTime = currentTime;
                             worker.lastPosition = { x: currentPos.x, y: currentPos.y };
                             return false; // Не удалять - это нормальное состояние (поиск нового золота)
@@ -684,29 +723,42 @@ export class WorkerBloc {
                         const centerX = Math.floor(hexGrid.width / 2);
                         const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
                         const targetHex = hexGrid.arrayToHex(centerX, baseY);
-                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
-                        worker.currentHexIndex = 0;
-                        worker.moveProgress = 0;
-                        worker.targetX = centerX;
-                        worker.targetY = baseY;
+                        const newPath = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
+                        if (newPath && newPath.length > 1) {
+                            worker.path = newPath;
+                            worker.currentHexIndex = 0;
+                            worker.moveProgress = 0;
+                            worker.targetX = centerX;
+                            worker.targetY = baseY;
+                        } else {
+                            // Путь на базу не найден - это критическая ситуация, но не зависание
+                            // Обновляем время, чтобы дать ещё один шанс
+                            worker.lastMoveTime = currentTime;
+                            worker.lastPosition = { x: currentPos.x, y: currentPos.y };
+                            return false; // Не удалять - путь не найден, но это не зависание
+                        }
                     }
                 }
                 
-                // Удаление если не двигается более 10 секунд, есть задание, но не может двигаться
-                if (timeSinceLastMove >= STUCK_REMOVE_TIME) {
+                // Удаление только если:
+                // - Не двигается более 10 секунд
+                // - Есть валидное задание
+                // - Есть валидный путь (должен двигаться, но не может)
+                if (timeSinceLastMove >= STUCK_REMOVE_TIME && hasValidPath) {
                     if (typeof window !== 'undefined' && window.logger) {
                         window.logger.error('worker', `Worker ${worker.id} stuck for ${timeSinceLastMove.toFixed(0)}ms, removing`, {
                             workerId: worker.id,
                             type: worker.type,
                             position: { x: worker.x, y: worker.y },
-                            hasPath: !!(worker.path && worker.path.length > 0),
+                            hasPath: hasValidPath,
                             isPerformingTask,
                             hasTask,
                             carryingGold: worker.carryingGold,
-                            targetGoldId: worker.targetGoldId
+                            targetGoldId: worker.targetGoldId,
+                            hasValidGoldTarget
                         });
                     }
-                    return true; // Удалить рабочего
+                    return true; // Удалить рабочего - реальное зависание
                 }
             } else if (hasMoved) {
                 worker.lastMoveTime = currentTime;
