@@ -617,53 +617,101 @@ export class WorkerBloc {
         }
         
         // Проверка зависания для сборщика
-        const currentPos = { x: worker.x, y: worker.y };
-        const hasMoved = currentPos.x !== worker.lastPosition.x || currentPos.y !== worker.lastPosition.y;
-        const isPerformingTask = worker.targetGoldId && currentArr.x === worker.targetX && currentArr.y === worker.targetY;
+        // Различаем состояния:
+        // 1. Нет задания (нет цели золота и не несёт золото) - НОРМАЛЬНО, не зависание
+        // 2. Есть задание, но не двигается - это может быть зависание
         
-        if (!hasMoved && !isPerformingTask) {
-            const timeSinceLastMove = currentTime - (worker.lastMoveTime || currentTime);
-            const STUCK_RECALCULATE_INTERVAL = 5000; // Пересчёт пути каждые 5 секунд
-            const STUCK_REMOVE_TIME = 10000; // Удаление после 10 секунд
+        const hasTask = worker.carryingGold || worker.targetGoldId;
+        const isSearchingForGold = !worker.carryingGold && !worker.targetGoldId;
+        
+        // Если нет задания - это нормальное состояние, не зависание
+        if (isSearchingForGold) {
+            // Сборщик ищет новое золото - обновляем время, чтобы не считался зависшим
+            worker.lastMoveTime = currentTime;
+            worker.lastPosition = { x: worker.x, y: worker.y };
+            return false; // Не удалять
+        }
+        
+        // Если есть задание - проверяем зависание
+        if (hasTask) {
+            const currentPos = { x: worker.x, y: worker.y };
+            const hasMoved = currentPos.x !== worker.lastPosition.x || currentPos.y !== worker.lastPosition.y;
+            const isPerformingTask = worker.targetGoldId && currentArr.x === worker.targetX && currentArr.y === worker.targetY;
             
-            // Пересчёт пути если не двигается более 5 секунд
-            if (timeSinceLastMove >= STUCK_RECALCULATE_INTERVAL && timeSinceLastMove < STUCK_REMOVE_TIME) {
-                if (worker.targetGoldId) {
-                    const goldPile = goldBloc.getState().goldPiles.find(p => p.id === worker.targetGoldId);
-                    if (goldPile && !goldPile.collected) {
-                        const targetHex = hexGrid.arrayToHex(goldPile.x, goldPile.y);
+            // Зависание определяется только если:
+            // - Есть задание (несёт золото или идёт к золоту)
+            // - НЕ двигается
+            // - НЕ выполняет задачу (не собирает золото)
+            // - Есть путь (должен двигаться, но не может)
+            const shouldBeMoving = (worker.path && worker.path.length > 1) || (worker.carryingGold && (!worker.path || worker.path.length <= 1));
+            
+            if (!hasMoved && !isPerformingTask && shouldBeMoving) {
+                const timeSinceLastMove = currentTime - (worker.lastMoveTime || currentTime);
+                const STUCK_RECALCULATE_INTERVAL = 5000; // Пересчёт пути каждые 5 секунд
+                const STUCK_REMOVE_TIME = 10000; // Удаление после 10 секунд
+                
+                // Пересчёт пути если не двигается более 5 секунд
+                if (timeSinceLastMove >= STUCK_RECALCULATE_INTERVAL && timeSinceLastMove < STUCK_REMOVE_TIME) {
+                    if (worker.targetGoldId) {
+                        const goldPile = goldBloc.getState().goldPiles.find(p => p.id === worker.targetGoldId);
+                        if (goldPile && !goldPile.collected) {
+                            const targetHex = hexGrid.arrayToHex(goldPile.x, goldPile.y);
+                            worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
+                            worker.currentHexIndex = 0;
+                            worker.moveProgress = 0;
+                            
+                            if (typeof window !== 'undefined' && window.logger) {
+                                window.logger.warn('worker', `Worker ${worker.id} stuck, recalculating path to gold`, {
+                                    workerId: worker.id,
+                                    type: worker.type,
+                                    position: { x: worker.x, y: worker.y },
+                                    timeSinceLastMove: timeSinceLastMove.toFixed(0)
+                                });
+                            }
+                        } else {
+                            // Золото исчезло - сбрасываем цель, сборщик будет искать новое
+                            worker.targetGoldId = null;
+                            worker.path = null;
+                            worker.targetX = null;
+                            worker.targetY = null;
+                            // Обновляем время, чтобы не считался зависшим при поиске нового золота
+                            worker.lastMoveTime = currentTime;
+                            worker.lastPosition = { x: currentPos.x, y: currentPos.y };
+                            return false; // Не удалять - это нормальное состояние (поиск нового золота)
+                        }
+                    } else if (worker.carryingGold) {
+                        // Несёт золото, но нет пути - пересчитываем путь на базу
+                        const centerX = Math.floor(hexGrid.width / 2);
+                        const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
+                        const targetHex = hexGrid.arrayToHex(centerX, baseY);
                         worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
                         worker.currentHexIndex = 0;
                         worker.moveProgress = 0;
-                        
-                        if (typeof window !== 'undefined' && window.logger) {
-                            window.logger.warn('worker', `Worker ${worker.id} stuck, recalculating path to gold`, {
-                                workerId: worker.id,
-                                type: worker.type,
-                                position: { x: worker.x, y: worker.y },
-                                timeSinceLastMove: timeSinceLastMove.toFixed(0)
-                            });
-                        }
+                        worker.targetX = centerX;
+                        worker.targetY = baseY;
                     }
                 }
-            }
-            
-            // Удаление если не двигается более 10 секунд и не выполняет задачу
-            if (timeSinceLastMove >= STUCK_REMOVE_TIME) {
-                if (typeof window !== 'undefined' && window.logger) {
-                    window.logger.error('worker', `Worker ${worker.id} stuck for ${timeSinceLastMove.toFixed(0)}ms, removing`, {
-                        workerId: worker.id,
-                        type: worker.type,
-                        position: { x: worker.x, y: worker.y },
-                        hasPath: !!(worker.path && worker.path.length > 0),
-                        isPerformingTask
-                    });
+                
+                // Удаление если не двигается более 10 секунд, есть задание, но не может двигаться
+                if (timeSinceLastMove >= STUCK_REMOVE_TIME) {
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.error('worker', `Worker ${worker.id} stuck for ${timeSinceLastMove.toFixed(0)}ms, removing`, {
+                            workerId: worker.id,
+                            type: worker.type,
+                            position: { x: worker.x, y: worker.y },
+                            hasPath: !!(worker.path && worker.path.length > 0),
+                            isPerformingTask,
+                            hasTask,
+                            carryingGold: worker.carryingGold,
+                            targetGoldId: worker.targetGoldId
+                        });
+                    }
+                    return true; // Удалить рабочего
                 }
-                return true; // Удалить рабочего
+            } else if (hasMoved) {
+                worker.lastMoveTime = currentTime;
+                worker.lastPosition = { x: currentPos.x, y: currentPos.y };
             }
-        } else if (hasMoved) {
-            worker.lastMoveTime = currentTime;
-            worker.lastPosition = { x: currentPos.x, y: currentPos.y };
         }
         
         return false; // Не удалять
@@ -1107,59 +1155,92 @@ export class WorkerBloc {
             }
             
             // Проверка зависания для строителя
-            const currentPos = { x: worker.x, y: worker.y };
-            const hasMoved = currentPos.x !== worker.lastPosition.x || currentPos.y !== worker.lastPosition.y;
-            const isPerformingTask = worker.buildingTarget && currentArr.x === worker.buildingTarget.x && currentArr.y === worker.buildingTarget.y;
+            // Различаем состояния:
+            // 1. Нет задачи и на базе - НОРМАЛЬНО, не зависание
+            // 2. Нет задачи и не на базе, но идёт на базу - НОРМАЛЬНО, не зависание
+            // 3. Есть задача, но не двигается - это может быть зависание
             
-            if (!hasMoved && !isPerformingTask) {
-                const timeSinceLastMove = currentTime - (worker.lastMoveTime || currentTime);
-                const STUCK_RECALCULATE_INTERVAL = 5000; // Пересчёт пути каждые 5 секунд
-                const STUCK_REMOVE_TIME = 10000; // Удаление после 10 секунд
+            const centerX = Math.floor(hexGrid.width / 2);
+            const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
+            const isOnBase = currentArr.x === centerX && currentArr.y === baseY;
+            const hasTask = !!worker.buildingTarget;
+            const isReturningToBase = !hasTask && worker.path && worker.targetX === centerX && worker.targetY === baseY;
+            
+            // Если нет задачи и на базе - это нормальное состояние, не зависание
+            if (!hasTask && isOnBase) {
+                worker.lastMoveTime = currentTime;
+                worker.lastPosition = { x: worker.x, y: worker.y };
+                return false; // Не удалять
+            }
+            
+            // Если нет задачи, но идёт на базу - это нормальное состояние, не зависание
+            if (!hasTask && isReturningToBase) {
+                // Проверяем, действительно ли движется к базе
+                const currentPos = { x: worker.x, y: worker.y };
+                const hasMoved = currentPos.x !== worker.lastPosition.x || currentPos.y !== worker.lastPosition.y;
+                if (hasMoved) {
+                    worker.lastMoveTime = currentTime;
+                    worker.lastPosition = { x: currentPos.x, y: currentPos.y };
+                }
+                return false; // Не удалять - это нормальное состояние (возврат на базу)
+            }
+            
+            // Если есть задача - проверяем зависание
+            if (hasTask) {
+                const currentPos = { x: worker.x, y: worker.y };
+                const hasMoved = currentPos.x !== worker.lastPosition.x || currentPos.y !== worker.lastPosition.y;
+                const isPerformingTask = worker.buildingTarget && currentArr.x === worker.buildingTarget.x && currentArr.y === worker.buildingTarget.y;
                 
-                // Пересчёт пути если не двигается более 5 секунд
-                if (timeSinceLastMove >= STUCK_RECALCULATE_INTERVAL && timeSinceLastMove < STUCK_REMOVE_TIME) {
-                    if (worker.buildingTarget) {
-                        const targetHex = hexGrid.arrayToHex(worker.buildingTarget.x, worker.buildingTarget.y);
-                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
-                        worker.currentHexIndex = 0;
-                        worker.moveProgress = 0;
-                    } else {
-                        const centerX = Math.floor(hexGrid.width / 2);
-                        const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
-                        const baseHex = hexGrid.arrayToHex(centerX, baseY);
-                        worker.path = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true, true);
-                        worker.currentHexIndex = 0;
-                        worker.moveProgress = 0;
-                        worker.targetX = centerX;
-                        worker.targetY = baseY;
+                // Зависание определяется только если:
+                // - Есть задача
+                // - НЕ двигается
+                // - НЕ выполняет задачу (не строит)
+                // - Есть путь (должен двигаться, но не может)
+                const shouldBeMoving = worker.path && worker.path.length > 1;
+                
+                if (!hasMoved && !isPerformingTask && shouldBeMoving) {
+                    const timeSinceLastMove = currentTime - (worker.lastMoveTime || currentTime);
+                    const STUCK_RECALCULATE_INTERVAL = 5000; // Пересчёт пути каждые 5 секунд
+                    const STUCK_REMOVE_TIME = 10000; // Удаление после 10 секунд
+                    
+                    // Пересчёт пути если не двигается более 5 секунд
+                    if (timeSinceLastMove >= STUCK_RECALCULATE_INTERVAL && timeSinceLastMove < STUCK_REMOVE_TIME) {
+                        if (worker.buildingTarget) {
+                            const targetHex = hexGrid.arrayToHex(worker.buildingTarget.x, worker.buildingTarget.y);
+                            worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
+                            worker.currentHexIndex = 0;
+                            worker.moveProgress = 0;
+                            
+                            if (typeof window !== 'undefined' && window.logger) {
+                                window.logger.warn('worker', `Worker ${worker.id} stuck, recalculating path to building target`, {
+                                    workerId: worker.id,
+                                    type: worker.type,
+                                    position: { x: worker.x, y: worker.y },
+                                    timeSinceLastMove: timeSinceLastMove.toFixed(0)
+                                });
+                            }
+                        }
                     }
                     
-                    if (typeof window !== 'undefined' && window.logger) {
-                        window.logger.warn('worker', `Worker ${worker.id} stuck, recalculating path`, {
-                            workerId: worker.id,
-                            type: worker.type,
-                            position: { x: worker.x, y: worker.y },
-                            timeSinceLastMove: timeSinceLastMove.toFixed(0)
-                        });
+                    // Удаление если не двигается более 10 секунд, есть задача, но не может двигаться
+                    if (timeSinceLastMove >= STUCK_REMOVE_TIME) {
+                        if (typeof window !== 'undefined' && window.logger) {
+                            window.logger.error('worker', `Worker ${worker.id} stuck for ${timeSinceLastMove.toFixed(0)}ms, removing`, {
+                                workerId: worker.id,
+                                type: worker.type,
+                                position: { x: worker.x, y: worker.y },
+                                hasPath: !!(worker.path && worker.path.length > 0),
+                                isPerformingTask,
+                                hasTask,
+                                buildingTarget: worker.buildingTarget
+                            });
+                        }
+                        return true; // Удалить рабочего
                     }
+                } else if (hasMoved) {
+                    worker.lastMoveTime = currentTime;
+                    worker.lastPosition = { x: currentPos.x, y: currentPos.y };
                 }
-                
-                // Удаление если не двигается более 10 секунд и не выполняет задачу
-                if (timeSinceLastMove >= STUCK_REMOVE_TIME) {
-                    if (typeof window !== 'undefined' && window.logger) {
-                        window.logger.error('worker', `Worker ${worker.id} stuck for ${timeSinceLastMove.toFixed(0)}ms, removing`, {
-                            workerId: worker.id,
-                            type: worker.type,
-                            position: { x: worker.x, y: worker.y },
-                            hasPath: !!(worker.path && worker.path.length > 0),
-                            isPerformingTask
-                        });
-                    }
-                    return true; // Удалить рабочего
-                }
-            } else if (hasMoved) {
-                worker.lastMoveTime = currentTime;
-                worker.lastPosition = { x: currentPos.x, y: currentPos.y };
             }
             
             return false; // Не удалять

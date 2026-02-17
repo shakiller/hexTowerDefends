@@ -877,6 +877,23 @@ class Game {
             });
         }
         
+        // Обработчик для настройки регенерации золота
+        const goldRegenerationIntervalSlider = document.getElementById('gold-regeneration-interval');
+        const goldRegenerationIntervalValue = document.getElementById('gold-regeneration-interval-value');
+        if (goldRegenerationIntervalSlider && goldRegenerationIntervalValue) {
+            // Инициализируем значение слайдера текущим интервалом (в секундах)
+            const currentInterval = Math.floor(this.goldBloc.regenerationInterval / 1000);
+            goldRegenerationIntervalSlider.value = currentInterval;
+            goldRegenerationIntervalValue.textContent = currentInterval;
+            
+            goldRegenerationIntervalSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                goldRegenerationIntervalValue.textContent = value;
+                // Устанавливаем интервал в миллисекундах
+                this.goldBloc.setRegenerationInterval(value * 1000);
+            });
+        }
+        
         console.log('Обработчики клика зарегистрированы');
     }
 
