@@ -79,6 +79,26 @@ export class WorkerBloc {
 
         this.state.workers.push(worker);
         this.gameBloc.updatePlayerGold(playerId, -cost);
+        
+        // Логируем создание рабочего
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.info('worker', `Worker created: ID=${worker.id}, Player=${playerId}, Type=${type}`, {
+                workerId: worker.id,
+                playerId,
+                type,
+                x: arrPos.x,
+                y: arrPos.y
+            });
+        } else if (typeof logger !== 'undefined') {
+            logger.info('worker', `Worker created: ID=${worker.id}, Player=${playerId}, Type=${type}`, {
+                workerId: worker.id,
+                playerId,
+                type,
+                x: arrPos.x,
+                y: arrPos.y
+            });
+        }
+        
         this.emit();
         return true;
     }
@@ -337,6 +357,20 @@ export class WorkerBloc {
     }
 
     updateGatherer(worker, currentTime, normalizedDeltaTime, goldBloc, obstacleBloc, towerBloc, hexGrid) {
+        // Логируем вызов updateGatherer (только первый раз или если нет пути)
+        if ((!worker.path || worker.path.length === 0) && typeof window !== 'undefined' && window.logger) {
+            window.logger.debug('worker', `updateGatherer called for worker ${worker.id}`, {
+                workerId: worker.id,
+                workerType: worker.type,
+                playerId: worker.playerId,
+                x: worker.x,
+                y: worker.y,
+                hasPath: !!worker.path,
+                hasTargetGold: !!worker.targetGoldId,
+                carryingGold: worker.carryingGold
+            });
+        }
+        
         const currentHex = hexGrid.arrayToHex(worker.x, worker.y);
         const currentArr = hexGrid.hexToArray(currentHex);
 
@@ -429,6 +463,18 @@ export class WorkerBloc {
         // Ищем новое золото
         else {
             const goldPiles = goldBloc.getState().goldPiles.filter(p => !p.collected);
+            
+            // Логируем поиск золота
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.debug('worker', `Worker ${worker.id} searching for gold. Available piles: ${goldPiles.length}`, {
+                    workerId: worker.id,
+                    workerType: worker.type,
+                    playerId: worker.playerId,
+                    currentPos: { x: currentArr.x, y: currentArr.y },
+                    availablePilesCount: goldPiles.length
+                });
+            }
+            
             let closestGold = null;
             let minDistance = Infinity;
 
@@ -454,20 +500,77 @@ export class WorkerBloc {
                 worker.targetX = closestGold.x;
                 worker.targetY = closestGold.y;
                 const targetHex = hexGrid.arrayToHex(closestGold.x, closestGold.y);
-                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true); // allowGates = true, allowObstacles = true для рабочих
-                worker.currentHexIndex = 0;
-                worker.moveProgress = 0;
                 
-                // Отладка
-                if (!worker.path || worker.path.length === 0) {
-                    // Путь к золоту не найден
-                } else {
-                    // Путь к золоту найден
+                if (!targetHex) {
+                    const warnMsg = `Worker ${worker.id}: Invalid target hex for gold at (${closestGold.x}, ${closestGold.y})`;
+                    console.warn(warnMsg);
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.warn('worker', warnMsg, {
+                            workerId: worker.id,
+                            goldX: closestGold.x,
+                            goldY: closestGold.y
+                        });
+                    }
+                    worker.targetGoldId = null;
+                    worker.targetX = null;
+                    worker.targetY = null;
+                    return;
                 }
                 
+                worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true); // allowGates = true, allowObstacles = true для рабочих
+                
+                if (!worker.path || worker.path.length === 0) {
+                    const warnMsg = `Worker ${worker.id}: Path not found to gold at (${closestGold.x}, ${closestGold.y})`;
+                    console.warn(warnMsg);
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.warn('worker', warnMsg, {
+                            workerId: worker.id,
+                            workerType: worker.type,
+                            playerId: worker.playerId,
+                            goldX: closestGold.x,
+                            goldY: closestGold.y,
+                            currentX: currentArr.x,
+                            currentY: currentArr.y
+                        });
+                    } else if (typeof logger !== 'undefined') {
+                        logger.warn('worker', warnMsg, {
+                            workerId: worker.id,
+                            workerType: worker.type,
+                            playerId: worker.playerId,
+                            goldX: closestGold.x,
+                            goldY: closestGold.y,
+                            currentX: currentArr.x,
+                            currentY: currentArr.y
+                        });
+                    }
+                    worker.targetGoldId = null;
+                    worker.targetX = null;
+                    worker.targetY = null;
+                    return;
+                }
+                
+                // Логируем успешное нахождение пути к золоту
+                if (typeof window !== 'undefined' && window.logger) {
+                    window.logger.info('worker', `Worker ${worker.id} found path to gold: ${worker.path.length} cells`, {
+                        workerId: worker.id,
+                        workerType: worker.type,
+                        pathLength: worker.path.length,
+                        goldX: closestGold.x,
+                        goldY: closestGold.y
+                    });
+                }
+                
+                worker.currentHexIndex = 0;
+                worker.moveProgress = 0;
                 this.emit(); // Уведомляем об изменении пути
             } else {
-                // Золото не найдено
+                // Золото не найдено - рабочий остаётся на месте
+                if (typeof window !== 'undefined' && window.logger) {
+                    window.logger.debug('worker', `Worker ${worker.id}: No gold found to collect`, {
+                        workerId: worker.id,
+                        availablePilesCount: goldPiles.length
+                    });
+                }
             }
         }
 
@@ -531,9 +634,60 @@ export class WorkerBloc {
                         const targetHex = hexGrid.arrayToHex(target.x, target.y);
                         buildSuccess = towerBloc.createTower(targetHex, worker.playerId, towerType);
                     } else {
-                        // Создаём препятствие
-                        obstacleBloc.addObstacle(target.x, target.y, target.type);
-                        buildSuccess = true;
+                        // Создаём препятствие - проверяем стоимость и списываем золото
+                        const obstacleCost = target.type === 'stone' ? 10 : 5; // Камни - 10, деревья - 5
+                        const gameState = this.gameBloc.getState();
+                        const player = gameState.players[worker.playerId];
+                        
+                        if (player.gold >= obstacleCost) {
+                            obstacleBloc.addObstacle(target.x, target.y, target.type);
+                            this.gameBloc.updatePlayerGold(worker.playerId, -obstacleCost);
+                            buildSuccess = true;
+                            
+                            // Логируем создание препятствия
+                            if (typeof window !== 'undefined' && window.logger) {
+                                window.logger.info('worker', `Obstacle built: ${target.type} at (${target.x}, ${target.y})`, {
+                                    workerId: worker.id,
+                                    playerId: worker.playerId,
+                                    obstacleType: target.type,
+                                    x: target.x,
+                                    y: target.y,
+                                    cost: obstacleCost,
+                                    remainingGold: player.gold - obstacleCost
+                                });
+                            } else if (typeof logger !== 'undefined') {
+                                logger.info('worker', `Obstacle built: ${target.type} at (${target.x}, ${target.y})`, {
+                                    workerId: worker.id,
+                                    playerId: worker.playerId,
+                                    obstacleType: target.type,
+                                    x: target.x,
+                                    y: target.y,
+                                    cost: obstacleCost,
+                                    remainingGold: player.gold - obstacleCost
+                                });
+                            }
+                        } else {
+                            buildSuccess = false;
+                            const warnMsg = `Worker ${worker.id}: Недостаточно золота для препятствия ${target.type}. Нужно: ${obstacleCost}, есть: ${player.gold}`;
+                            console.warn(warnMsg);
+                            if (typeof window !== 'undefined' && window.logger) {
+                                window.logger.warn('worker', warnMsg, {
+                                    workerId: worker.id,
+                                    playerId: worker.playerId,
+                                    obstacleType: target.type,
+                                    requiredGold: obstacleCost,
+                                    availableGold: player.gold
+                                });
+                            } else if (typeof logger !== 'undefined') {
+                                logger.warn('worker', warnMsg, {
+                                    workerId: worker.id,
+                                    playerId: worker.playerId,
+                                    obstacleType: target.type,
+                                    requiredGold: obstacleCost,
+                                    availableGold: player.gold
+                                });
+                            }
+                        }
                     }
                     
                     // Задача выполнена (или не удалась) - очищаем задачу и возвращаемся на базу

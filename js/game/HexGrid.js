@@ -339,7 +339,34 @@ export class HexGrid {
         }
         
         // Используем A* алгоритм
-        return this.findPathAStar(startHex, targetHex, obstacleBloc, towerBloc, allowGates, allowObstacles);
+        const path = this.findPathAStar(startHex, targetHex, obstacleBloc, towerBloc, allowGates, allowObstacles);
+        
+        // Логируем проблемы с поиском пути
+        if (!path || path.length === 0) {
+            const startArr = this.hexToArray(startHex);
+            const targetArr = this.hexToArray(targetHex);
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.warn('pathfinding', `Path not found from (${startArr.x}, ${startArr.y}) to (${targetArr.x}, ${targetArr.y})`, {
+                    startHex: { q: startHex.q, r: startHex.r, s: startHex.s },
+                    targetHex: { q: targetHex.q, r: targetHex.r, s: targetHex.s },
+                    startArr: { x: startArr.x, y: startArr.y },
+                    targetArr: { x: targetArr.x, y: targetArr.y },
+                    allowGates,
+                    allowObstacles
+                });
+            } else if (typeof logger !== 'undefined') {
+                logger.warn('pathfinding', `Path not found from (${startArr.x}, ${startArr.y}) to (${targetArr.x}, ${targetArr.y})`, {
+                    startHex: { q: startHex.q, r: startHex.r, s: startHex.s },
+                    targetHex: { q: targetHex.q, r: targetHex.r, s: targetHex.s },
+                    startArr: { x: startArr.x, y: startArr.y },
+                    targetArr: { x: targetArr.x, y: targetArr.y },
+                    allowGates,
+                    allowObstacles
+                });
+            }
+        }
+        
+        return path;
     }
     
     findPathAStar(startHex, targetHex, obstacleBloc = null, towerBloc = null, allowGates = false, allowObstacles = false) {

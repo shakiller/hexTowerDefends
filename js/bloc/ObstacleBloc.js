@@ -34,6 +34,12 @@ export class ObstacleBloc {
     emit() {
         this.listeners.forEach(listener => listener(this.state));
     }
+    
+    getState() {
+        return {
+            obstacles: [...this.state.obstacles]
+        };
+    }
 
     addObstacle(x, y, type) {
         // type: 'stone' (камень, неуничтожимый) или 'tree' (дерево, можно разрушить)

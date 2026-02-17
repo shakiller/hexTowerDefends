@@ -124,6 +124,26 @@ export class Renderer {
             }
         }
         
+        // Рисуем визуальную линию середины карты
+        const halfHeight = Math.floor(this.hexGrid.height / 2);
+        this.ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)'; // Жёлтая полупрозрачная линия
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([5, 5]); // Пунктирная линия
+        
+        // Рисуем линию через всю ширину карты на середине
+        for (let x = 0; x < this.hexGrid.width; x++) {
+            const hex = this.hexGrid.arrayToHex(x, halfHeight);
+            const pixel = this.hexGrid.hexToPixel(hex);
+            if (x === 0) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(pixel.x, pixel.y);
+            } else {
+                this.ctx.lineTo(pixel.x, pixel.y);
+            }
+        }
+        this.ctx.stroke();
+        this.ctx.setLineDash([]); // Сбрасываем пунктир
+        
         this.ctx.restore();
     }
 

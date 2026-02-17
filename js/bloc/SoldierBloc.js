@@ -138,14 +138,25 @@ export class SoldierBloc {
         this.state.soldiers.push(soldier);
         console.log('✅ Солдат добавлен в массив. Всего солдат:', this.state.soldiers.length);
         this.gameBloc.updatePlayerGold(playerId, -soldierConfig.cost);
-        console.log('✅ Солдат создан успешно:', {
+        
+        const soldierData = {
             id: soldier.id,
             playerId: soldier.playerId,
             type: soldier.type,
             startPos: { x: soldier.startX, y: soldier.startY },
             targetPos: { x: soldier.targetX, y: soldier.targetY },
             soldiersInArray: this.state.soldiers.length
-        });
+        };
+        
+        console.log('✅ Солдат создан успешно:', soldierData);
+        
+        // Логируем создание солдата
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.info('soldier', `Soldier created: ID=${soldier.id}, Player=${playerId}, Type=${soldier.type}`, soldierData);
+        } else if (typeof logger !== 'undefined') {
+            logger.info('soldier', `Soldier created: ID=${soldier.id}, Player=${playerId}, Type=${soldier.type}`, soldierData);
+        }
+        
         this.emit();
         console.log('✅ emit() вызван для SoldierBloc');
         return true;
@@ -218,6 +229,24 @@ export class SoldierBloc {
         
         // Интервал пересчёта пути (в миллисекундах) - пересчитываем каждые 500мс
         const PATH_RECALCULATION_INTERVAL = 500;
+        
+        // Логируем вызов updateSoldiers (только если есть солдаты)
+        if (this.state.soldiers.length > 0 && typeof window !== 'undefined' && window.logger) {
+            const soldiersWithoutPath = this.state.soldiers.filter(s => !s.path || s.path.length === 0);
+            if (soldiersWithoutPath.length > 0) {
+                window.logger.debug('soldier', `updateSoldiers called: ${this.state.soldiers.length} soldiers, ${soldiersWithoutPath.length} without path`, {
+                    totalSoldiers: this.state.soldiers.length,
+                    withoutPath: soldiersWithoutPath.length,
+                    soldiersInfo: soldiersWithoutPath.map(s => ({
+                        id: s.id,
+                        playerId: s.playerId,
+                        x: s.x,
+                        y: s.y,
+                        hasPath: !!s.path
+                    }))
+                });
+            }
+        }
         
         this.state.soldiers.forEach(soldier => {
             // Обработка режима разрушения дерева
@@ -333,15 +362,98 @@ export class SoldierBloc {
             
             // Если путь ещё не вычислен, вычисляем его
             if (!soldier.path || soldier.path.length === 0) {
+                // Логируем попытку вычисления пути
+                if (typeof window !== 'undefined' && window.logger) {
+                    window.logger.debug('soldier', `Soldier ${soldier.id} calculating path from (${soldier.startX}, ${soldier.startY}) to (${soldier.targetX}, ${soldier.targetY})`, {
+                        soldierId: soldier.id,
+                        playerId: soldier.playerId,
+                        startX: soldier.startX,
+                        startY: soldier.startY,
+                        targetX: soldier.targetX,
+                        targetY: soldier.targetY
+                    });
+                }
+                
                 const startHex = this.hexGrid.arrayToHex(soldier.startX, soldier.startY);
                 const targetHex = this.hexGrid.arrayToHex(soldier.targetX, soldier.targetY);
+                
+                // Проверяем валидность координат
+                if (!startHex || !targetHex) {
+                    const warnMsg = `Soldier ${soldier.id}: Invalid start or target hex`;
+                    console.warn(warnMsg, {
+                        startX: soldier.startX,
+                        startY: soldier.startY,
+                        targetX: soldier.targetX,
+                        targetY: soldier.targetY,
+                        startHex,
+                        targetHex
+                    });
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.error('soldier', warnMsg, {
+                            soldierId: soldier.id,
+                            startX: soldier.startX,
+                            startY: soldier.startY,
+                            targetX: soldier.targetX,
+                            targetY: soldier.targetY,
+                            startHex,
+                            targetHex
+                        });
+                    }
+                    soldiersToRemove.push(soldier.id);
+                    return;
+                }
+                
                 soldier.path = this.hexGrid.findPath(startHex, targetHex, obstacleBloc, towerBloc);
-                soldier.currentHexIndex = 0;
-                soldier.x = soldier.startX;
-                soldier.y = soldier.startY;
-                soldier.moveProgress = 0;
-                soldier.direction = 0;
-                soldier.lastPathRecalculation = performance.now();
+                
+                if (!soldier.path || soldier.path.length === 0) {
+                    const warnMsg = `Soldier ${soldier.id}: Path not found from (${soldier.startX}, ${soldier.startY}) to (${soldier.targetX}, ${soldier.targetY})`;
+                    console.warn(warnMsg);
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.warn('soldier', warnMsg, {
+                            soldierId: soldier.id,
+                            playerId: soldier.playerId,
+                            startX: soldier.startX,
+                            startY: soldier.startY,
+                            targetX: soldier.targetX,
+                            targetY: soldier.targetY,
+                            startHex,
+                            targetHex
+                        });
+                    } else if (typeof logger !== 'undefined') {
+                        logger.warn('soldier', warnMsg, {
+                            soldierId: soldier.id,
+                            playerId: soldier.playerId,
+                            startX: soldier.startX,
+                            startY: soldier.startY,
+                            targetX: soldier.targetX,
+                            targetY: soldier.targetY,
+                            startHex,
+                            targetHex
+                        });
+                    }
+                    // Не удаляем солдата сразу - проверим, не рядом ли с базой ниже
+                    // Продолжаем выполнение, чтобы проверить позицию
+                } else {
+                    // Логируем успешное нахождение пути
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.info('soldier', `Soldier ${soldier.id} found path: ${soldier.path.length} cells`, {
+                            soldierId: soldier.id,
+                            playerId: soldier.playerId,
+                            pathLength: soldier.path.length,
+                            startX: soldier.startX,
+                            startY: soldier.startY,
+                            targetX: soldier.targetX,
+                            targetY: soldier.targetY
+                        });
+                    }
+                    
+                    soldier.currentHexIndex = 0;
+                    soldier.x = soldier.startX;
+                    soldier.y = soldier.startY;
+                    soldier.moveProgress = 0;
+                    soldier.direction = 0;
+                    soldier.lastPathRecalculation = performance.now();
+                }
             }
             
             // Если путь пустой после попытки вычисления, проверяем, не рядом ли с базой

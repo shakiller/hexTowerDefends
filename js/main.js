@@ -8,6 +8,7 @@ import { WorkerBloc } from './bloc/WorkerBloc.js';
 import { HexGrid } from './game/HexGrid.js';
 import { Renderer } from './game/Renderer.js';
 import { BotAI } from './game/BotAI.js';
+import { logger } from './utils/Logger.js';
 
 class Game {
     constructor() {
@@ -28,6 +29,8 @@ class Game {
         this.isRunning = false;
         this.wasDragForClick = false; // Инициализация флага для проверки drag
         this.lastGoldBaseCheck = 0; // Время последней проверки золота на базе
+        this.lastGameLoopLog = 0; // Время последнего логирования gameLoop
+        this.gameLoopCallCount = 0; // Счётчик вызовов gameLoop
         
         // Настройка визуальной отладки
         this.setupVisualDebug();
@@ -918,10 +921,60 @@ class Game {
         this.workerBloc.subscribe(() => {
             this.render();
         });
+
+        // Настройка кнопки экспорта логов
+        this.setupLogExport();
+    }
+
+    setupLogExport() {
+        // Ждём, пока DOM полностью загрузится
+        setTimeout(() => {
+            const btnExportLogs = document.getElementById('btn-export-logs');
+            if (btnExportLogs) {
+                btnExportLogs.addEventListener('click', () => {
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.exportToFile();
+                    } else if (typeof logger !== 'undefined') {
+                        logger.exportToFile();
+                    } else {
+                        alert('Логгер не инициализирован');
+                    }
+                });
+                console.log('✅ Кнопка экспорта логов настроена');
+            } else {
+                console.warn('⚠️ Кнопка экспорта логов не найдена');
+            }
+
+            // Обновляем статус логов каждые 2 секунды
+            setInterval(() => {
+                const logStatusEl = document.getElementById('log-status');
+                if (logStatusEl) {
+                    let count = 0;
+                    if (typeof window !== 'undefined' && window.logger) {
+                        count = window.logger.getLogCount();
+                    } else if (typeof logger !== 'undefined') {
+                        count = logger.getLogCount();
+                    }
+                    logStatusEl.textContent = `Логов: ${count}`;
+                    if (count > 0) {
+                        logStatusEl.style.color = '#90e24a';
+                    } else {
+                        logStatusEl.style.color = '#999';
+                    }
+                }
+            }, 2000);
+        }, 100);
     }
 
     startGame(mode) {
         console.log('=== startGame ВЫЗВАН ===', mode);
+        
+        // Логируем начало игры
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.info('game', `Game started: mode=${mode}`, { mode, timestamp: Date.now() });
+        } else if (typeof logger !== 'undefined') {
+            logger.info('game', `Game started: mode=${mode}`, { mode, timestamp: Date.now() });
+        }
         
         // Очищаем состояние игры
         this.towerBloc.reset();
@@ -933,6 +986,21 @@ class Game {
         
         // Генерируем золото на поле (одинаковое количество на обеих половинах)
         this.goldBloc.generateGold(50, 10); // 50 золота в каждой куче, 10 куч на каждую половину
+        
+        // Логируем генерацию золота
+        const goldState = this.goldBloc.getState();
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.info('game', `Gold generated: ${goldState.goldPiles.length} piles`, {
+                pilesCount: goldState.goldPiles.length,
+                piles: goldState.goldPiles.map(p => ({ x: p.x, y: p.y, amount: p.amount }))
+            });
+        } else if (typeof logger !== 'undefined') {
+            logger.info('game', `Gold generated: ${goldState.goldPiles.length} piles`, {
+                pilesCount: goldState.goldPiles.length,
+                piles: goldState.goldPiles.map(p => ({ x: p.x, y: p.y, amount: p.amount }))
+            });
+        }
+        
         // Удаляем золото с базы (если оно там есть по ошибке)
         this.goldBloc.removeGoldFromBase(this.obstacleBloc, this.towerBloc);
         
@@ -1575,7 +1643,26 @@ class Game {
     }
 
     gameLoop(currentTime = performance.now()) {
+        // Логируем начало gameLoop (только первые несколько раз)
+        if (!this.gameLoopCallCount) {
+            this.gameLoopCallCount = 0;
+        }
+        this.gameLoopCallCount++;
+        
+        if (this.gameLoopCallCount <= 10) {
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.debug('game', `gameLoop START #${this.gameLoopCallCount}`, {
+                    callNumber: this.gameLoopCallCount,
+                    isRunning: this.isRunning,
+                    currentTime: currentTime.toFixed(2)
+                });
+            }
+        }
+        
         if (!this.isRunning) {
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.warn('game', 'gameLoop: игра не запущена (isRunning = false)');
+            }
             console.log('gameLoop: игра не запущена (isRunning = false)');
             return;
         }
@@ -1584,14 +1671,33 @@ class Game {
         const deltaTime = this.lastTime > 0 ? currentTime - this.lastTime : 16; // 16мс = ~60 FPS
         const gameState = this.gameBloc.getState();
         
+        // Логируем каждый вызов gameLoop (только первые несколько раз для отладки)
+        if (this.gameLoopCallCount <= 10 || this.gameLoopCallCount % 60 === 0) {
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.debug('game', `gameLoop call #${this.gameLoopCallCount}: isRunning=${this.isRunning}, gameState=${gameState.gameState}`, {
+                    callNumber: this.gameLoopCallCount,
+                    isRunning: this.isRunning,
+                    gameState: gameState.gameState,
+                    deltaTime: deltaTime.toFixed(2)
+                });
+            }
+        }
+        
         // Обновление башен (стрельба) - всегда, даже в тестовом режиме
-        const soldiers = this.soldierBloc.getState().soldiers;
-        const workers = this.workerBloc.getState().workers;
-        const playerState = this.playerBloc.getState();
-        // В тестовом режиме башен передаём позицию мыши для реакции на курсор
-        const mouseHex = playerState.testTowersMode && this.mousePosition && this.mousePosition.hex ? 
-                         this.mousePosition.hex : null;
-        this.towerBloc.updateTowers(currentTime, soldiers, this.hexGrid, mouseHex, workers);
+        try {
+            const soldiers = this.soldierBloc.getState().soldiers;
+            const workers = this.workerBloc.getState().workers;
+            const playerState = this.playerBloc.getState();
+            // В тестовом режиме башен передаём позицию мыши для реакции на курсор
+            const mouseHex = playerState.testTowersMode && this.mousePosition && this.mousePosition.hex ? 
+                             this.mousePosition.hex : null;
+            this.towerBloc.updateTowers(currentTime, soldiers, this.hexGrid, mouseHex, workers);
+        } catch (error) {
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.error('game', `Error in updateTowers: ${error.message}`, { error: error.toString(), stack: error.stack });
+            }
+            console.error('Error in updateTowers:', error);
+        }
         
         if (gameState.gameState === 'playing') {
             // Обновление солдат
@@ -1600,6 +1706,20 @@ class Game {
             
             // Обновление рабочих
             this.workerBloc.updateWorkers(deltaTime, currentTime, this.goldBloc, this.obstacleBloc, this.towerBloc, this.hexGrid);
+            
+            // Логируем вызов gameLoop (только раз в секунду для отладки)
+            if (!this.lastGameLoopLog || currentTime - this.lastGameLoopLog > 1000) {
+                this.lastGameLoopLog = currentTime;
+                const soldierState = this.soldierBloc.getState();
+                const workerState = this.workerBloc.getState();
+                if (typeof window !== 'undefined' && window.logger) {
+                    window.logger.debug('game', `gameLoop: ${soldierState.soldiers.length} soldiers, ${workerState.workers.length} workers`, {
+                        soldiersCount: soldierState.soldiers.length,
+                        workersCount: workerState.workers.length,
+                        gameState: gameState.gameState
+                    });
+                }
+            }
             
             // Периодически проверяем и удаляем золото с базы (раз в 5 секунд)
             if (!this.lastGoldBaseCheck || currentTime - this.lastGoldBaseCheck > 5000) {
@@ -1628,12 +1748,53 @@ class Game {
         }
         
         // Обновление UI
-        this.updateUI(gameState);
+        try {
+            this.updateUI(gameState);
+        } catch (error) {
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.error('game', `Error in updateUI: ${error.message}`, { error: error.toString(), stack: error.stack });
+            }
+            console.error('Error in updateUI:', error);
+        }
         
-        this.render();
+        try {
+            this.render();
+        } catch (error) {
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.error('game', `Error in render: ${error.message}`, { error: error.toString(), stack: error.stack });
+            }
+            console.error('Error in render:', error);
+        }
+        
         this.lastTime = currentTime;
         
-        requestAnimationFrame((time) => this.gameLoop(time));
+        // Логируем запрос следующего кадра (только первые несколько раз)
+        if (this.gameLoopCallCount <= 10) {
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.debug('game', `gameLoop END #${this.gameLoopCallCount} - Requesting next frame`, {
+                    callNumber: this.gameLoopCallCount,
+                    isRunning: this.isRunning,
+                    gameState: gameState.gameState
+                });
+            }
+        }
+        
+        // КРИТИЧНО: Всегда вызываем requestAnimationFrame, даже если была ошибка
+        try {
+            requestAnimationFrame((time) => this.gameLoop(time));
+            if (this.gameLoopCallCount <= 10) {
+                if (typeof window !== 'undefined' && window.logger) {
+                    window.logger.debug('game', `requestAnimationFrame scheduled for call #${this.gameLoopCallCount + 1}`);
+                }
+            }
+        } catch (error) {
+            if (typeof window !== 'undefined' && window.logger) {
+                window.logger.error('game', `Error in requestAnimationFrame: ${error.message}`, { error: error.toString(), stack: error.stack });
+            }
+            console.error('Error in requestAnimationFrame:', error);
+            // Пытаемся продолжить через setTimeout
+            setTimeout(() => this.gameLoop(performance.now()), 16);
+        }
     }
 
     updateSoldierDebugInfo() {
