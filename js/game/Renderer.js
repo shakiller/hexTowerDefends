@@ -20,10 +20,14 @@ export class Renderer {
         let maxWidth = container.clientWidth - 40;
         let maxHeight = container.clientHeight - 40;
         
+        // Добавляем отступ снизу, чтобы поле не обрезалось
+        const bottomPadding = 50; // Отступ снизу в пикселях
+        maxHeight -= bottomPadding;
+        
         // Если размеры слишком маленькие, используем размеры окна или минимальные значения
         if (maxWidth < 300 || maxHeight < 300 || !maxWidth || !maxHeight || isNaN(maxWidth) || isNaN(maxHeight)) {
             maxWidth = Math.max(window.innerWidth - 100, 1000);
-            maxHeight = Math.max(window.innerHeight - 250, 700);
+            maxHeight = Math.max(window.innerHeight - 250 - bottomPadding, 700);
             // Это нормальная ситуация - контейнер может быть скрыт при инициализации
             // Используем размеры окна как запасной вариант (без предупреждения)
         }
@@ -56,7 +60,8 @@ export class Renderer {
         // Размеры канваса для всей сетки с учетом множителей
         // Не ограничиваем по ширине - будет прокрутка
         const canvasWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
-        const canvasHeight = this.hexGrid.height * this.hexGrid.hexSize * 1.5 * verticalMultiplier + this.hexGrid.hexSize;
+        const bottomPadding = 50; // Отступ снизу для предотвращения обрезания поля
+        const canvasHeight = this.hexGrid.height * this.hexGrid.hexSize * 1.5 * verticalMultiplier + this.hexGrid.hexSize + bottomPadding;
         
         // Канвас должен быть размером видимой области (контейнера)
         // Вся сетка будет отрисовываться через виртуальный скролл
@@ -64,8 +69,9 @@ export class Renderer {
         this.canvas.height = maxHeight;
         
         // Сохраняем реальные размеры поля для ограничения скролла
+        // Добавляем отступ снизу к высоте поля
         this.fieldWidth = Math.max(canvasWidth, 1600);
-        this.fieldHeight = Math.max(canvasHeight, 1300);
+        this.fieldHeight = Math.max(canvasHeight, 1300 + bottomPadding);
         
         console.log('Canvas setup:', {
             hexSize: this.hexGrid.hexSize,

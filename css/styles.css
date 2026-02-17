@@ -138,6 +138,7 @@ body {
 }
 
 #game-board-container {
+    padding-bottom: 50px; /* Отступ снизу для предотвращения обрезания поля */
     flex: 1 1 auto;
     display: flex;
     justify-content: center;
