@@ -60,7 +60,6 @@ export class Renderer {
         // Размеры канваса для всей сетки с учетом множителей
         // Не ограничиваем по ширине - будет прокрутка
         const canvasWidth = this.hexGrid.width * this.hexGrid.hexWidth * horizontalMultiplier;
-        const bottomPadding = 50; // Отступ снизу для предотвращения обрезания поля
         const canvasHeight = this.hexGrid.height * this.hexGrid.hexSize * 1.5 * verticalMultiplier + this.hexGrid.hexSize + bottomPadding;
         
         // Канвас должен быть размером видимой области (контейнера)
