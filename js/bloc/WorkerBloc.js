@@ -73,6 +73,8 @@ export class WorkerBloc {
             buildingProgress: 0,
             lastGatherTime: 0,
             lastBuildTime: 0,
+            lastMoveTime: performance.now(), // Время последнего движения (для проверки зависания)
+            lastPosition: { x: arrPos.x, y: arrPos.y }, // Последняя позиция (для проверки зависания)
             health: type === 'gatherer' ? this.gathererSettings.health : this.builderSettings.health,
             maxHealth: type === 'gatherer' ? this.gathererSettings.health : this.builderSettings.health
         };
@@ -341,11 +343,17 @@ export class WorkerBloc {
 
             // Логика для сборщика золота
             if (worker.type === 'gatherer') {
-                this.updateGatherer(worker, currentTime, normalizedDeltaTime, goldBloc, obstacleBloc, towerBloc, hexGrid);
+                const shouldRemove = this.updateGatherer(worker, currentTime, normalizedDeltaTime, goldBloc, obstacleBloc, towerBloc, hexGrid);
+                if (shouldRemove) {
+                    workersToRemove.push(worker.id);
+                }
             }
             // Логика для строителя
             else if (worker.type === 'builder') {
-                this.updateBuilder(worker, currentTime, normalizedDeltaTime, obstacleBloc, towerBloc, hexGrid);
+                const shouldRemove = this.updateBuilder(worker, currentTime, normalizedDeltaTime, obstacleBloc, towerBloc, hexGrid);
+                if (shouldRemove) {
+                    workersToRemove.push(worker.id);
+                }
             }
         });
 
@@ -601,12 +609,67 @@ export class WorkerBloc {
                     const nextArr = hexGrid.hexToArray(nextHex);
                     worker.x = nextArr.x;
                     worker.y = nextArr.y;
+                    // Обновляем время и позицию при движении
+                    worker.lastMoveTime = currentTime;
+                    worker.lastPosition = { x: worker.x, y: worker.y };
                 }
             }
         }
+        
+        // Проверка зависания для сборщика
+        const currentPos = { x: worker.x, y: worker.y };
+        const hasMoved = currentPos.x !== worker.lastPosition.x || currentPos.y !== worker.lastPosition.y;
+        const isPerformingTask = worker.targetGoldId && currentArr.x === worker.targetX && currentArr.y === worker.targetY;
+        
+        if (!hasMoved && !isPerformingTask) {
+            const timeSinceLastMove = currentTime - (worker.lastMoveTime || currentTime);
+            const STUCK_RECALCULATE_INTERVAL = 5000; // Пересчёт пути каждые 5 секунд
+            const STUCK_REMOVE_TIME = 10000; // Удаление после 10 секунд
+            
+            // Пересчёт пути если не двигается более 5 секунд
+            if (timeSinceLastMove >= STUCK_RECALCULATE_INTERVAL && timeSinceLastMove < STUCK_REMOVE_TIME) {
+                if (worker.targetGoldId) {
+                    const goldPile = goldBloc.getState().goldPiles.find(p => p.id === worker.targetGoldId);
+                    if (goldPile && !goldPile.collected) {
+                        const targetHex = hexGrid.arrayToHex(goldPile.x, goldPile.y);
+                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
+                        worker.currentHexIndex = 0;
+                        worker.moveProgress = 0;
+                        
+                        if (typeof window !== 'undefined' && window.logger) {
+                            window.logger.warn('worker', `Worker ${worker.id} stuck, recalculating path to gold`, {
+                                workerId: worker.id,
+                                type: worker.type,
+                                position: { x: worker.x, y: worker.y },
+                                timeSinceLastMove: timeSinceLastMove.toFixed(0)
+                            });
+                        }
+                    }
+                }
+            }
+            
+            // Удаление если не двигается более 10 секунд и не выполняет задачу
+            if (timeSinceLastMove >= STUCK_REMOVE_TIME) {
+                if (typeof window !== 'undefined' && window.logger) {
+                    window.logger.error('worker', `Worker ${worker.id} stuck for ${timeSinceLastMove.toFixed(0)}ms, removing`, {
+                        workerId: worker.id,
+                        type: worker.type,
+                        position: { x: worker.x, y: worker.y },
+                        hasPath: !!(worker.path && worker.path.length > 0),
+                        isPerformingTask
+                    });
+                }
+                return true; // Удалить рабочего
+            }
+        } else if (hasMoved) {
+            worker.lastMoveTime = currentTime;
+            worker.lastPosition = { x: currentPos.x, y: currentPos.y };
+        }
+        
+        return false; // Не удалять
     }
 
-    updateBuilder(worker, currentTime, deltaTime, obstacleBloc, towerBloc, hexGrid) {
+    updateBuilder(worker, currentTime, normalizedDeltaTime, obstacleBloc, towerBloc, hexGrid) {
         // Вычисляем текущую позицию - это будет обновляться по мере движения
         let currentHex = hexGrid.arrayToHex(worker.x, worker.y);
         let currentArr = hexGrid.hexToArray(currentHex);
@@ -1025,7 +1088,7 @@ export class WorkerBloc {
                 worker.direction = Math.atan2(pixelDy, pixelDx);
                 
                 const baseSpeed = 1.0 * this.builderSettings.moveSpeed;
-                const pixelSpeed = baseSpeed * deltaTime * 1000; // deltaTime уже нормализован в секундах
+                const pixelSpeed = baseSpeed * normalizedDeltaTime * 1000; // Преобразуем обратно в пиксели
                 if (pixelDistance > 0) {
                     worker.moveProgress += pixelSpeed / pixelDistance;
                 }
@@ -1037,9 +1100,69 @@ export class WorkerBloc {
                     const nextArr = hexGrid.hexToArray(nextHex);
                     worker.x = nextArr.x;
                     worker.y = nextArr.y;
+                    // Обновляем время и позицию при движении
+                    worker.lastMoveTime = currentTime;
+                    worker.lastPosition = { x: worker.x, y: worker.y };
                 }
             }
             
+            // Проверка зависания для строителя
+            const currentPos = { x: worker.x, y: worker.y };
+            const hasMoved = currentPos.x !== worker.lastPosition.x || currentPos.y !== worker.lastPosition.y;
+            const isPerformingTask = worker.buildingTarget && currentArr.x === worker.buildingTarget.x && currentArr.y === worker.buildingTarget.y;
+            
+            if (!hasMoved && !isPerformingTask) {
+                const timeSinceLastMove = currentTime - (worker.lastMoveTime || currentTime);
+                const STUCK_RECALCULATE_INTERVAL = 5000; // Пересчёт пути каждые 5 секунд
+                const STUCK_REMOVE_TIME = 10000; // Удаление после 10 секунд
+                
+                // Пересчёт пути если не двигается более 5 секунд
+                if (timeSinceLastMove >= STUCK_RECALCULATE_INTERVAL && timeSinceLastMove < STUCK_REMOVE_TIME) {
+                    if (worker.buildingTarget) {
+                        const targetHex = hexGrid.arrayToHex(worker.buildingTarget.x, worker.buildingTarget.y);
+                        worker.path = hexGrid.findPath(currentHex, targetHex, obstacleBloc, towerBloc, true, true);
+                        worker.currentHexIndex = 0;
+                        worker.moveProgress = 0;
+                    } else {
+                        const centerX = Math.floor(hexGrid.width / 2);
+                        const baseY = worker.playerId === 1 ? hexGrid.height - 1 : 0;
+                        const baseHex = hexGrid.arrayToHex(centerX, baseY);
+                        worker.path = hexGrid.findPath(currentHex, baseHex, obstacleBloc, towerBloc, true, true);
+                        worker.currentHexIndex = 0;
+                        worker.moveProgress = 0;
+                        worker.targetX = centerX;
+                        worker.targetY = baseY;
+                    }
+                    
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.warn('worker', `Worker ${worker.id} stuck, recalculating path`, {
+                            workerId: worker.id,
+                            type: worker.type,
+                            position: { x: worker.x, y: worker.y },
+                            timeSinceLastMove: timeSinceLastMove.toFixed(0)
+                        });
+                    }
+                }
+                
+                // Удаление если не двигается более 10 секунд и не выполняет задачу
+                if (timeSinceLastMove >= STUCK_REMOVE_TIME) {
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.error('worker', `Worker ${worker.id} stuck for ${timeSinceLastMove.toFixed(0)}ms, removing`, {
+                            workerId: worker.id,
+                            type: worker.type,
+                            position: { x: worker.x, y: worker.y },
+                            hasPath: !!(worker.path && worker.path.length > 0),
+                            isPerformingTask
+                        });
+                    }
+                    return true; // Удалить рабочего
+                }
+            } else if (hasMoved) {
+                worker.lastMoveTime = currentTime;
+                worker.lastPosition = { x: currentPos.x, y: currentPos.y };
+            }
+            
+            return false; // Не удалять
             // Обновляем currentArr на основе актуальной позиции worker.x и worker.y
             currentHex = hexGrid.arrayToHex(worker.x, worker.y);
             currentArr = hexGrid.hexToArray(currentHex);

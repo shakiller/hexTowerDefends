@@ -113,6 +113,8 @@ export class SoldierBloc {
             moveProgress: 0, // Прогресс движения от текущей ячейки к следующей (0.0 - 1.0)
             direction: 0, // Направление движения в радианах
             lastPathRecalculation: 0, // Время последнего пересчёта пути (в миллисекундах)
+            lastMoveTime: performance.now(), // Время последнего движения (для проверки зависания)
+            lastPosition: { x: arrPos.x, y: arrPos.y }, // Последняя позиция (для проверки зависания)
             targetX,
             targetY,
             type,
@@ -691,6 +693,55 @@ export class SoldierBloc {
             const pixelSpeed = soldier.speed * normalizedDeltaTime;
             soldier.moveProgress += pixelSpeed / pixelDistance;
             
+            // Проверка зависания: отслеживаем движение
+            const currentPos = { x: soldier.x, y: soldier.y };
+            const hasMoved = currentPos.x !== soldier.lastPosition.x || currentPos.y !== soldier.lastPosition.y;
+            
+            if (hasMoved) {
+                // Солдат двигается - обновляем время и позицию
+                soldier.lastMoveTime = currentTime;
+                soldier.lastPosition = { x: currentPos.x, y: currentPos.y };
+            } else {
+                // Солдат не двигается - проверяем зависание
+                const timeSinceLastMove = currentTime - (soldier.lastMoveTime || currentTime);
+                const STUCK_CHECK_INTERVAL = 1000; // Проверка каждую секунду
+                const STUCK_RECALCULATE_INTERVAL = 5000; // Пересчёт пути каждые 5 секунд
+                const STUCK_REMOVE_TIME = 10000; // Удаление после 10 секунд
+                
+                // Пересчёт пути если не двигается более 5 секунд
+                if (timeSinceLastMove >= STUCK_RECALCULATE_INTERVAL && timeSinceLastMove < STUCK_REMOVE_TIME) {
+                    const currentHexForPath = this.hexGrid.arrayToHex(soldier.x, soldier.y);
+                    const targetHex = this.hexGrid.arrayToHex(soldier.targetX, soldier.targetY);
+                    soldier.path = this.hexGrid.findPath(currentHexForPath, targetHex, obstacleBloc, towerBloc);
+                    soldier.lastPathRecalculation = currentTime;
+                    
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.warn('soldier', `Soldier ${soldier.id} stuck, recalculating path`, {
+                            soldierId: soldier.id,
+                            playerId: soldier.playerId,
+                            position: { x: soldier.x, y: soldier.y },
+                            timeSinceLastMove: timeSinceLastMove.toFixed(0),
+                            pathFound: !!(soldier.path && soldier.path.length > 0)
+                        });
+                    }
+                }
+                
+                // Удаление если не двигается более 10 секунд
+                if (timeSinceLastMove >= STUCK_REMOVE_TIME) {
+                    if (typeof window !== 'undefined' && window.logger) {
+                        window.logger.error('soldier', `Soldier ${soldier.id} stuck for ${timeSinceLastMove.toFixed(0)}ms, removing`, {
+                            soldierId: soldier.id,
+                            playerId: soldier.playerId,
+                            position: { x: soldier.x, y: soldier.y },
+                            target: { x: soldier.targetX, y: soldier.targetY },
+                            hasPath: !!(soldier.path && soldier.path.length > 0)
+                        });
+                    }
+                    soldiersToRemove.push(soldier.id);
+                    return;
+                }
+            }
+            
             if (soldier.moveProgress >= 1.0) {
                 // Достигли следующей ячейки, переходим к следующей
                 soldier.currentHexIndex += 1;
@@ -769,6 +820,13 @@ export class SoldierBloc {
     }
 
     removeSoldier(id) {
+        // Находим солдата перед удалением для статистики
+        const soldier = this.state.soldiers.find(s => s.id === id);
+        if (soldier && soldier.health <= 0) {
+            // Солдат убит - увеличиваем статистику убитых у противника
+            const enemyPlayerId = soldier.playerId === 1 ? 2 : 1;
+            this.gameBloc.incrementKilledSoldiers(enemyPlayerId);
+        }
         this.state.soldiers = this.state.soldiers.filter(s => s.id !== id);
     }
 

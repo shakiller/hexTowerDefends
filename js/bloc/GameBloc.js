@@ -7,8 +7,8 @@ export class GameBloc {
             level: 1,
             winner: null,
             players: {
-                1: { gold: 500, baseHealth: 100 },
-                2: { gold: 500, baseHealth: 100 }
+                1: { gold: 500, baseHealth: 100, killedSoldiers: 0 },
+                2: { gold: 500, baseHealth: 100, killedSoldiers: 0 }
             }
         };
         this.listeners = [];
@@ -36,13 +36,17 @@ export class GameBloc {
             this.state.level = 1;
             this.state.players[1].gold = 500;
             this.state.players[1].baseHealth = 100;
+            this.state.players[1].killedSoldiers = 0;
             this.state.players[2].gold = 500;
             this.state.players[2].baseHealth = 100;
+            this.state.players[2].killedSoldiers = 0;
         } else {
             this.state.players[1].gold = 500;
             this.state.players[1].baseHealth = 100;
+            this.state.players[1].killedSoldiers = 0;
             this.state.players[2].gold = 500;
             this.state.players[2].baseHealth = 100;
+            this.state.players[2].killedSoldiers = 0;
         }
         
         this.emit();
@@ -58,6 +62,10 @@ export class GameBloc {
     }
 
     switchPlayer() {
+        // В режиме PvP (онлайн) оба игрока играют одновременно, переключение не требуется
+        if (this.state.gameMode === 'pvp') {
+            return; // Онлайн режим - оба игрока играют одновременно
+        }
         if ((this.state.gameMode === 'pve' || this.state.gameMode === 'campaign') && this.state.currentPlayer === 2) {
             return; // Бот играет автоматически в режимах PvE и Campaign
         }
@@ -79,6 +87,13 @@ export class GameBloc {
         this.emit();
     }
 
+    incrementKilledSoldiers(playerId) {
+        if (this.state.players[playerId]) {
+            this.state.players[playerId].killedSoldiers = (this.state.players[playerId].killedSoldiers || 0) + 1;
+            this.emit();
+        }
+    }
+
     getState() {
         // Глубокое копирование состояния, чтобы гарантировать, что players всегда присутствует
         return {
@@ -98,8 +113,8 @@ export class GameBloc {
             level: 1,
             winner: null,
             players: {
-                1: { gold: 500, baseHealth: 100 },
-                2: { gold: 500, baseHealth: 100 }
+                1: { gold: 500, baseHealth: 100, killedSoldiers: 0 },
+                2: { gold: 500, baseHealth: 100, killedSoldiers: 0 }
             }
         };
         this.emit();
@@ -110,8 +125,10 @@ export class GameBloc {
             this.state.level++;
             this.state.players[1].gold = 500 + this.state.level * 100;
             this.state.players[1].baseHealth = 100;
+            this.state.players[1].killedSoldiers = 0;
             this.state.players[2].gold = 500 + this.state.level * 50;
             this.state.players[2].baseHealth = 100;
+            this.state.players[2].killedSoldiers = 0;
             this.state.gameState = 'playing';
             this.state.currentPlayer = 1;
             this.emit();

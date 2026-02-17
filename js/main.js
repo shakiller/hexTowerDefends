@@ -448,9 +448,7 @@ class Game {
                     const success = this.towerBloc.upgradeTower(tower.id);
                     if (success) {
                         this.playerBloc.clearSelection();
-                        if (gameState.gameMode === 'pvp') {
-                            this.gameBloc.switchPlayer();
-                        }
+                        // В режиме PvP (онлайн) оба игрока играют одновременно, переключение не требуется
                     }
                 }
             }
@@ -477,9 +475,7 @@ class Game {
                 );
                 if (soldier) {
                     const success = this.soldierBloc.upgradeSoldier(soldier.id);
-                    if (success && gameState.gameMode === 'pvp') {
-                        this.gameBloc.switchPlayer();
-                    }
+                    // В режиме PvP (онлайн) оба игрока играют одновременно, переключение не требуется
                 }
             }
         });
@@ -1631,10 +1627,7 @@ class Game {
                 this.playerBloc.clearSelection();
                 // Обновляем UI после изменения золота
                 this.updatePlayerPanel(this.playerBloc.getState());
-                // Переключаем игрока только в режиме PvP
-                if (gameState.gameMode === 'pvp') {
-                    this.gameBloc.switchPlayer();
-                }
+                // В режиме PvP (онлайн) оба игрока играют одновременно, переключение не требуется
             } else {
                 console.log('Не удалось разместить башню - проверьте консоль выше');
             }
@@ -1726,6 +1719,9 @@ class Game {
                 this.goldBloc.removeGoldFromBase(this.obstacleBloc, this.towerBloc);
                 this.lastGoldBaseCheck = currentTime;
             }
+            
+            // Проверяем и выполняем регенерацию золота
+            this.goldBloc.checkAndRegenerate(currentTime, this.obstacleBloc, this.towerBloc);
             
             // Обновление бота
             this.botAI.update(currentTime);

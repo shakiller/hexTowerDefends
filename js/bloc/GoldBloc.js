@@ -6,6 +6,10 @@ export class GoldBloc {
         };
         this.listeners = [];
         this.goldIdCounter = 0;
+        this.regenerationInterval = 30000; // Регенерация золота каждые 30 секунд (настраивается)
+        this.lastRegenerationTime = 0;
+        this.regenerationAmountPerSide = 50; // Количество золота в каждой куче
+        this.regenerationPilesPerSide = 10; // Количество куч на каждую половину
     }
 
     subscribe(listener) {
@@ -161,6 +165,126 @@ export class GoldBloc {
         return removed;
     }
 
+    /**
+     * Проверяет и выполняет регенерацию золота если прошло достаточно времени
+     * Удаляет собранные кучи и создаёт новые на свободных ячейках
+     */
+    checkAndRegenerate(currentTime, obstacleBloc, towerBloc) {
+        if (currentTime - this.lastRegenerationTime < this.regenerationInterval) {
+            return; // Ещё не время для регенерации
+        }
+        
+        this.lastRegenerationTime = currentTime;
+        
+        // Удаляем собранные кучи
+        const beforeCount = this.state.goldPiles.length;
+        this.state.goldPiles = this.state.goldPiles.filter(pile => !pile.collected);
+        const removedCount = beforeCount - this.state.goldPiles.length;
+        
+        // Генерируем новое золото на свободных ячейках (не очищая существующие)
+        // Используем функцию canPlaceGold для проверки, но также проверяем препятствия и башни
+        const canPlaceGold = (x, y) => {
+            // Проверяем границы
+            if (y < 1 || y >= this.hexGrid.height - 1) {
+                return false;
+            }
+            
+            // Проверяем покрашенную зону базы
+            if (y === 0) {
+                return false;
+            }
+            
+            const isOnPlayer1BaseRow1 = y === this.hexGrid.height - 2 && x % 2 === 0;
+            const isOnPlayer1BaseRow2 = y === this.hexGrid.height - 1 && x % 2 === 1;
+            if (isOnPlayer1BaseRow1 || isOnPlayer1BaseRow2) {
+                return false;
+            }
+            
+            // Проверяем, нет ли уже золота на этой позиции
+            const existingPile = this.state.goldPiles.find(p => p.x === x && p.y === y && !p.collected);
+            if (existingPile) {
+                return false;
+            }
+            
+            // Проверяем, свободна ли ячейка (нет препятствия или башни)
+            const hex = this.hexGrid.arrayToHex(x, y);
+            if (this.hexGrid.isBlocked(hex, obstacleBloc, towerBloc, false)) {
+                return false;
+            }
+            
+            return true;
+        };
+        
+        // Генерируем новое золото только на свободных ячейках
+        const halfHeight = Math.floor(this.hexGrid.height / 2);
+        let generatedCount = 0;
+        
+        // Нижняя половина (игрок 1)
+        for (let i = 0; i < this.regenerationPilesPerSide && generatedCount < this.regenerationPilesPerSide; i++) {
+            let x, y, hex;
+            let attempts = 0;
+            do {
+                x = Math.floor(Math.random() * this.hexGrid.width);
+                const minY = Math.max(halfHeight + 1, 1);
+                const maxY = Math.max(this.hexGrid.height - 2, minY);
+                y = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+                hex = this.hexGrid.arrayToHex(x, y);
+                attempts++;
+            } while ((!this.hexGrid.isValidHex(hex) || !canPlaceGold(x, y)) && attempts < 100);
+            
+            if (this.hexGrid.isValidHex(hex) && canPlaceGold(x, y)) {
+                this.state.goldPiles.push({
+                    id: this.goldIdCounter++,
+                    x,
+                    y,
+                    amount: this.regenerationAmountPerSide,
+                    collected: false
+                });
+                generatedCount++;
+            }
+        }
+        
+        // Верхняя половина (игрок 2)
+        generatedCount = 0;
+        for (let i = 0; i < this.regenerationPilesPerSide && generatedCount < this.regenerationPilesPerSide; i++) {
+            let x, y, hex;
+            let attempts = 0;
+            do {
+                x = Math.floor(Math.random() * this.hexGrid.width);
+                const minY = 1;
+                const maxY = Math.max(halfHeight - 1, minY);
+                y = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+                hex = this.hexGrid.arrayToHex(x, y);
+                attempts++;
+            } while ((!this.hexGrid.isValidHex(hex) || !canPlaceGold(x, y)) && attempts < 100);
+            
+            if (this.hexGrid.isValidHex(hex) && canPlaceGold(x, y)) {
+                this.state.goldPiles.push({
+                    id: this.goldIdCounter++,
+                    x,
+                    y,
+                    amount: this.regenerationAmountPerSide,
+                    collected: false
+                });
+                generatedCount++;
+            }
+        }
+        
+        if (typeof window !== 'undefined' && window.logger) {
+            window.logger.info('gold', `Gold regenerated: removed ${removedCount} collected piles, generated ${generatedCount * 2} new piles`, {
+                removedPiles: removedCount,
+                newPiles: generatedCount * 2,
+                regenerationInterval: this.regenerationInterval
+            });
+        }
+        
+        this.emit();
+    }
+
+    setRegenerationInterval(interval) {
+        this.regenerationInterval = Math.max(1000, interval); // Минимум 1 секунда
+    }
+
     getState() {
         return { ...this.state };
     }
@@ -168,6 +292,7 @@ export class GoldBloc {
     reset() {
         this.state.goldPiles = [];
         this.goldIdCounter = 0;
+        this.lastRegenerationTime = 0;
         this.emit();
     }
 }
