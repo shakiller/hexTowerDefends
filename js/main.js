@@ -1676,11 +1676,13 @@ class Game {
             }
         }
         
+        // Получаем состояние игрока для использования в разных местах
+        const playerState = this.playerBloc.getState();
+        
         // Обновление башен (стрельба) - всегда, даже в тестовом режиме
         try {
             const soldiers = this.soldierBloc.getState().soldiers;
             const workers = this.workerBloc.getState().workers;
-            const playerState = this.playerBloc.getState();
             // В тестовом режиме башен передаём позицию мыши для реакции на курсор
             const mouseHex = playerState.testTowersMode && this.mousePosition && this.mousePosition.hex ? 
                              this.mousePosition.hex : null;
